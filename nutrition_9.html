@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="FoodMe">
+<meta name="theme-color" content="#F6EFE2">
+<title>FoodMe — Qu'est-ce que je cuisine ?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,680;1,9..144,500&family=Work+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* Palette inspirée d'un étal de marché : lin/papier, tomate mûre, basilic frais, safran.
+     Volontairement chaleureuse et texturée plutôt que sombre/technique — cohérent avec le sujet (nourriture). */
+  :root{
+    --bg:#F6EFE2;
+    --surface:#FFFCF5;
+    --surface-2:#FBF1DE;
+    --ink:#2B241D;
+    --ink-dim:#8C7F6C;
+    --line:#E6D9C2;
+    --tomato:#D8472B;
+    --tomato-dark:#B93A22;
+    --tomato-tint:#FBE2DA;
+    --basil:#4B7F4E;
+    --basil-ink:#2F5C33;
+    --basil-tint:#E3EEDE;
+    --saffron:#DE9A2E;
+    --saffron-ink:#8A5A12;
+    --saffron-tint:#FBEACB;
+    --danger:#B23A2E;
+    --radius:16px;
+    --shadow:0 2px 10px rgba(43,36,29,.07),0 1px 2px rgba(43,36,29,.05);
+    --font-display:'Fraunces',Georgia,serif;
+    --font-body:'Work Sans',-apple-system,BlinkMacSystemFont,sans-serif;
+    --font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  [hidden]{display:none !important;} /* garantit que hidden gagne toujours, même sur des éléments avec display:flex */
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.001ms !important;animation-iteration-count:1 !important;transition-duration:.001ms !important;}
+  }
+  button:focus-visible, input:focus-visible{outline:2px solid var(--tomato);outline-offset:2px;}
+  body{
+    margin:0;
+    font-family:var(--font-body);
+    background:var(--bg);
+    color:var(--ink);
+    padding-bottom:40px;
+  }
+  header{
+    position:sticky;top:0;z-index:10;
+    background:linear-gradient(180deg,var(--bg) 85%,transparent);
+    padding:22px 20px 8px;
+  }
+  .header-top{display:flex;align-items:center;justify-content:space-between;}
+  header h1{
+    margin:0;
+    font-family:var(--font-display);
+    font-size:27px;
+    font-weight:680;
+    letter-spacing:-.01em;
+    display:flex;align-items:center;gap:8px;
+  }
+  .menu-btn{
+    position:relative;width:38px;height:38px;border-radius:10px;
+    background:var(--surface);border:1px solid var(--line);color:var(--ink);
+    font-size:17px;cursor:pointer;flex-shrink:0;
+  }
+  .menu-badge{
+    position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;padding:0 4px;
+    background:var(--tomato);color:#fff;border-radius:999px;font-size:10.5px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;font-family:var(--font-body);
+  }
+  .menu-panel{
+    position:absolute;top:60px;right:16px;z-index:20;
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);padding:6px;min-width:210px;
+  }
+  .menu-item{
+    display:flex;align-items:center;justify-content:space-between;width:100%;
+    background:none;border:none;padding:11px 10px;border-radius:9px;
+    font-family:var(--font-body);font-size:14.5px;font-weight:600;color:var(--ink);cursor:pointer;text-align:left;
+  }
+  .menu-item:hover{background:var(--surface-2);}
+  .menu-count{color:var(--tomato-dark);font-weight:700;font-size:13px;}
+  .shopping-item{
+    display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);
+    border-radius:12px;padding:12px 14px;margin-bottom:8px;
+  }
+  .shopping-item.checked{opacity:.5;}
+  .shopping-item.checked label{text-decoration:line-through;}
+  .shopping-item label{flex:1;font-size:14.5px;}
+  .shopping-item button{background:none;border:none;color:var(--ink-dim);font-size:15px;cursor:pointer;padding:4px;}
+  .clear-list-btn{
+    background:none;border:none;color:var(--tomato);font-weight:600;font-size:13px;cursor:pointer;
+    padding:8px 0;margin-top:8px;
+  }
+  header p{
+    margin:4px 0 0;
+    color:var(--ink-dim);
+    font-size:14px;
+  }
+  main{padding:0 16px;}
+  .category{margin-top:14px;}
+  .chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .chip{
+    border:1px solid var(--line);
+    background:var(--surface);
+    color:var(--ink);
+    font-family:var(--font-body);
+    padding:9px 14px;
+    border-radius:999px;
+    font-size:14px;
+    font-weight:500;
+    cursor:pointer;
+    user-select:none;
+    transition:background .15s,border-color .15s,transform .1s,color .15s;
+  }
+  .chip:active{transform:scale(0.96);}
+  .chip.selected{
+    background:var(--basil);
+    border-color:var(--basil);
+    color:#fff;
+    font-weight:600;
+  }
+  #selectedCount{font-weight:400;opacity:.85;}
+  #results{margin-top:8px;}
+  .state-msg{
+    text-align:center;
+    color:var(--ink-dim);
+    font-size:14px;
+    padding:30px 20px;
+    line-height:1.6;
+  }
+  .recipe-card{
+    position:relative;
+    display:flex;
+    gap:14px;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:14px;
+    margin-bottom:14px;
+    cursor:pointer;
+    box-shadow:var(--shadow);
+    transition:transform .12s;
+  }
+  .recipe-card:active{transform:scale(.985);}
+  .recipe-card::after{ /* petit coin corné, effet fiche recette */
+    content:"";position:absolute;top:0;right:0;width:0;height:0;
+    border-style:solid;border-width:0 14px 14px 0;
+    border-color:transparent var(--bg) transparent transparent;
+  }
+  .recipe-card img{
+    width:78px;height:78px;border-radius:10px;object-fit:cover;flex-shrink:0;background:var(--surface-2);
+  }
+  .recipe-card .info{flex:1;min-width:0;}
+  .recipe-card .badges{margin:0 0 6px;}
+  .recipe-card h3{
+    margin:0 0 7px;font-family:var(--font-display);font-weight:600;font-size:16px;line-height:1.25;color:var(--ink);
+  }
+  .match{
+    display:inline-flex;align-items:center;
+    font-size:12.5px;font-weight:600;
+    color:var(--saffron-ink);background:var(--saffron-tint);
+    padding:4px 10px;border-radius:999px;
+  }
+  .match.ok{color:var(--basil-ink);background:var(--basil-tint);}
+  .recipe-detail{
+    position:relative;
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:20px;
+    margin-bottom:14px;
+    box-shadow:var(--shadow);
+  }
+  .recipe-detail img{width:100%;border-radius:12px;display:block;margin-bottom:14px;}
+  .recipe-detail h3{margin:0 0 6px;font-family:var(--font-display);font-weight:680;font-size:22px;color:var(--ink);}
+  .recipe-detail .meta{color:var(--ink-dim);font-size:13px;margin-bottom:14px;font-family:var(--font-display);font-style:italic;}
+  .recipe-detail h4{font-size:12px;text-transform:uppercase;color:var(--tomato);margin:18px 0 8px;letter-spacing:.08em;font-weight:700;}
+  .recipe-detail ul{margin:0;padding-left:20px;font-size:14.5px;line-height:1.7;}
+  .recipe-detail p{font-size:14.5px;line-height:1.75;white-space:pre-line;}
+  .back-btn{
+    background:none;border:none;color:var(--tomato);font-size:14px;font-weight:600;
+    padding:8px 0 16px;cursor:pointer;font-family:var(--font-body);
+  }
+  .cat-header{
+    width:100%;
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--surface);border:1px solid var(--line);color:var(--ink);
+    padding:12px 14px;border-radius:12px;
+    font-family:var(--font-body);font-size:14px;font-weight:600;
+    cursor:pointer;
+  }
+  .category.open .cat-header{border-color:var(--tomato);}
+  .cat-header .cat-meta{display:flex;align-items:center;gap:8px;}
+  .cat-header .cat-count{color:var(--tomato);font-weight:700;font-family:var(--font-mono);font-size:13px;}
+  .cat-header .chevron{transition:transform .15s;display:inline-block;color:var(--ink-dim);}
+  .category.open .chevron{transform:rotate(180deg);}
+  .category .chips{display:none;padding-top:12px;}
+  .category.open .chips{display:flex;}
+  .done-btn{
+    width:100%;padding:14px;margin-top:18px;border:none;border-radius:14px;
+    background:var(--tomato);color:#fff;font-family:var(--font-body);font-weight:700;font-size:15px;cursor:pointer;
+    transition:background .15s;
+  }
+  .done-btn:active{background:var(--tomato-dark);}
+  .confirm-btn{
+    width:100%;padding:13px;margin-top:16px;border:none;border-radius:12px;
+    background:var(--tomato);color:#fff;font-family:var(--font-body);font-weight:700;cursor:pointer;
+  }
+  .spinner{
+    width:26px;height:26px;border:3px solid var(--line);border-top-color:var(--tomato);
+    border-radius:50%;margin:0 auto 12px;animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .hint{color:var(--ink-dim);font-size:14px;margin:2px 0 12px;}
+  .difficulty-picker{display:flex;gap:8px;}
+  .difficulty-picker button{
+    flex:1;padding:12px 4px;border:1px solid var(--line);border-radius:12px;
+    background:var(--surface-2);color:var(--ink);font-family:var(--font-body);font-size:13px;font-weight:600;cursor:pointer;
+  }
+  .difficulty-picker button.selected{border-color:var(--tomato);background:var(--tomato-tint);color:var(--tomato-dark);}
+  .sort-bar{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+  .sort-btn{
+    padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);
+    color:var(--ink-dim);font-family:var(--font-body);font-size:12.5px;font-weight:600;cursor:pointer;
+  }
+  .sort-btn.selected{border-color:var(--tomato);background:var(--tomato-tint);color:var(--tomato-dark);}
+  .dish-card{
+    position:relative;
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:14px;margin-bottom:12px;box-shadow:var(--shadow);
+  }
+  .dish-delete{
+    position:absolute;top:8px;right:8px;background:none;border:none;
+    color:var(--ink-dim);font-size:14px;cursor:pointer;padding:6px;line-height:1;opacity:.6;
+  }
+  .dish-delete:hover{opacity:1;color:var(--tomato);}
+  .dish-card-top{display:flex;gap:12px;}
+  .dish-card img{width:64px;height:64px;border-radius:10px;object-fit:cover;flex-shrink:0;background:var(--surface-2);}
+  .dish-card h3{margin:0 0 4px;font-family:var(--font-display);font-weight:600;font-size:15.5px;color:var(--ink);}
+  .dish-card .meta{color:var(--ink-dim);font-size:12.5px;}
+  .dish-card .badges{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+  .badge{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--ink-dim);}
+  .badge.remake{background:var(--basil-tint);color:var(--basil-ink);}
+  .stars{display:flex;gap:4px;margin-top:10px;}
+  .stars button{background:none;border:none;font-size:22px;cursor:pointer;padding:0;line-height:1;color:var(--line);}
+  .stars button.filled{color:var(--saffron);}
+  .remake-toggle{display:flex;gap:8px;margin-top:10px;}
+  .remake-toggle button{
+    flex:1;padding:9px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);
+    color:var(--ink);font-family:var(--font-body);font-size:13px;font-weight:600;cursor:pointer;
+  }
+  .remake-toggle button.selected{border-color:var(--basil);background:var(--basil-tint);color:var(--basil-ink);}
+  .rate-taste-btn{
+    margin-top:10px;background:none;border:none;color:var(--tomato);font-weight:600;font-size:13px;cursor:pointer;padding:0;
+  }
+  .photo-btn{
+    display:block;width:100%;padding:12px;margin-top:8px;border:1.5px dashed var(--line);border-radius:12px;
+    background:var(--surface-2);color:var(--ink-dim);font-family:var(--font-body);font-weight:600;font-size:13.5px;cursor:pointer;
+  }
+  .photo-preview-wrap{position:relative;margin-top:8px;display:inline-block;}
+  .photo-preview-wrap img{width:120px;height:120px;object-fit:cover;border-radius:12px;display:block;}
+  .photo-preview-wrap button{
+    position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;
+    background:var(--tomato);color:#fff;border:2px solid var(--surface);font-size:12px;cursor:pointer;
+  }
+  #tabbar{display:flex;gap:6px;margin-top:14px;}
+  .tab-btn{
+    flex:1;padding:11px 4px 9px;border-radius:10px 10px 4px 4px;background:var(--surface);
+    color:var(--ink-dim);font-family:var(--font-body);font-size:12.5px;font-weight:600;cursor:pointer;
+    border:1px solid var(--line);border-bottom:3px solid var(--line);
+    transition:transform .15s,border-color .15s,color .15s;
+  }
+  .tab-btn.active{
+    color:var(--ink);border-bottom-color:var(--tomato);transform:translateY(-2px);box-shadow:var(--shadow);
+  }
+  .view{padding:0 16px;padding-bottom:40px;}
+  .add-toggle-btn{
+    width:100%;padding:13px;margin:16px 0;border-radius:12px;
+    background:var(--surface);border:1.5px solid var(--basil);color:var(--basil-ink);
+    font-family:var(--font-body);font-weight:700;cursor:pointer;
+  }
+  .fridge-summary{
+    background:var(--surface);border:1px solid var(--line);border-radius:16px;
+    padding:16px 16px 6px;margin-top:18px;box-shadow:var(--shadow);
+  }
+  .fridge-summary h2{
+    font-size:13px;text-transform:uppercase;color:var(--tomato-dark);letter-spacing:.06em;
+    margin:0 0 14px;font-weight:700;padding-bottom:10px;border-bottom:1px solid var(--line);
+  }
+  .fridge-group{margin-bottom:14px;}
+  .fridge-group-label{font-size:11.5px;color:var(--ink-dim);font-weight:700;letter-spacing:.03em;margin:0 0 6px 2px;text-transform:uppercase;}
+  .pill{
+    display:inline-flex;align-items:center;gap:4px;background:var(--basil-tint);border:1px solid var(--basil);
+    color:var(--basil-ink);font-family:var(--font-body);font-weight:500;
+    border-radius:999px;padding:6px 6px 6px 12px;font-size:13px;margin:0 6px 6px 0;
+  }
+  .pill button{background:none;border:none;color:var(--basil-ink);opacity:.65;cursor:pointer;font-size:14px;padding:2px 6px;}
+  .pill.expiring{background:var(--tomato-tint);border-color:var(--tomato);color:var(--tomato-dark);}
+  .pill.expiring button{color:var(--tomato-dark);}
+  .expiry-tag{font-size:11px;font-weight:700;margin-left:2px;}
+  .expiry-btn{font-size:13px;}
+  .expiry-input{margin-left:6px;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 4px;}
+  .settings-row{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;
+  }
+  .settings-label{font-weight:700;font-size:14.5px;color:var(--ink);margin-bottom:4px;}
+  .settings-desc{font-size:12.5px;color:var(--ink-dim);line-height:1.5;}
+  .switch{position:relative;width:44px;height:26px;flex-shrink:0;}
+  .switch input{opacity:0;width:0;height:0;}
+  .switch-slider{
+    position:absolute;inset:0;background:var(--line);border-radius:999px;cursor:pointer;transition:background .15s;
+  }
+  .switch-slider::before{
+    content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;
+    background:#fff;transition:transform .15s;
+  }
+  .switch input:checked + .switch-slider{background:var(--basil);}
+  .switch input:checked + .switch-slider::before{transform:translateX(18px);}
+  .waste-stats{
+    margin-top:14px;background:var(--basil-tint);border-radius:14px;padding:14px 16px;
+    color:var(--basil-ink);font-size:14px;font-weight:600;text-align:center;
+  }
+  #refreshCuisineBtn{
+    width:100%;padding:14px;margin:16px 0;border:none;border-radius:14px;
+    background:var(--tomato);color:#fff;font-family:var(--font-body);font-weight:700;font-size:15px;cursor:pointer;
+  }
+  #refreshCuisineBtn:disabled{opacity:.35;}
+  #refreshCuisineBtn:active:not(:disabled){background:var(--tomato-dark);}
+  .step{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden;background:var(--surface);}
+  .step-header{
+    width:100%;display:flex;align-items:center;justify-content:space-between;
+    background:var(--surface);border:none;color:var(--ink);padding:13px 16px;
+    font-family:var(--font-display);font-weight:600;font-size:15.5px;cursor:pointer;
+    transition:background .15s;
+  }
+  .step.open .step-header{background:var(--tomato-tint);}
+  .step-header .chevron{transition:transform .15s;display:inline-block;color:var(--ink-dim);}
+  .step.open .step-header .chevron{transform:rotate(180deg);}
+  .step-body{display:none;padding:15px 16px;background:var(--surface-2);border-top:1px solid var(--line);}
+  .step.open .step-body{display:block;}
+  .step-text{margin:0 0 12px;font-size:14.5px;line-height:1.65;}
+  .timer-start{
+    padding:9px 14px;border:none;border-radius:10px;background:var(--tomato);color:#fff;
+    font-family:var(--font-body);font-weight:700;font-size:13px;cursor:pointer;
+  }
+  .timer-display{font-family:var(--font-mono);font-size:24px;font-weight:600;color:var(--tomato-dark);letter-spacing:.02em;}
+  .search-input{
+    width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);
+    background:var(--surface);color:var(--ink);font-family:var(--font-body);font-size:14px;margin-bottom:14px;
+  }
+  .search-input::placeholder{color:var(--ink-dim);}
+  .timer-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .timer-pause, .timer-reset{
+    padding:7px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);
+    color:var(--ink);font-family:var(--font-body);font-size:12.5px;font-weight:600;cursor:pointer;
+  }
+  .timer-stop-alarm{
+    margin-top:10px;padding:9px 14px;border:none;border-radius:10px;background:var(--danger);
+    color:#fff;font-family:var(--font-body);font-weight:700;font-size:13px;cursor:pointer;
+    animation:pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.7;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <h1>🍽️ FoodMe</h1>
+    <button id="menuBtn" class="menu-btn" aria-label="Menu">☰<span id="menuBadge" class="menu-badge" hidden></span></button>
+  </div>
+  <nav id="tabbar">
+    <button class="tab-btn active" data-tab="frigo">🧊 Mon frigo</button>
+    <button class="tab-btn" data-tab="cuisiner">🍳 Cuisiner</button>
+    <button class="tab-btn" data-tab="mesplats">📖 Mes plats</button>
+    <button class="tab-btn" data-tab="communaute">👥 Communauté</button>
+  </nav>
+</header>
+<div id="menuPanel" class="menu-panel" hidden>
+  <button type="button" class="menu-item" data-action="liste">🛒 Liste de courses <span id="menuListCount" class="menu-count"></span></button>
+  <button type="button" class="menu-item" data-action="parametres">⚙️ Paramètres</button>
+</div>
+
+<main id="view-frigo" class="view">
+  <button id="toggleAddBtn" class="add-toggle-btn">+ Remplir mon frigo</button>
+  <input type="text" id="ingredientSearch" class="search-input" placeholder="🔍 Rechercher un ingrédient…" hidden>
+  <div id="categories" hidden></div>
+  <div class="fridge-summary">
+    <h2>Ton frigo actuellement</h2>
+    <div id="fridgeSummary"></div>
+  </div>
+</main>
+
+<main id="view-cuisiner" class="view" hidden>
+  <button id="refreshCuisineBtn">Actualiser les recettes <span id="selectedCount"></span></button>
+  <div id="results"></div>
+</main>
+
+<main id="view-mesplats" class="view" hidden>
+  <div id="mesPlatsList"></div>
+</main>
+
+<main id="view-liste" class="view" hidden>
+  <button class="back-btn" id="backFromListeBtn">← Retour</button>
+  <div id="listeCoursesContent"></div>
+</main>
+
+<main id="view-parametres" class="view" hidden>
+  <button class="back-btn" id="backFromParametresBtn">← Retour</button>
+  <div class="settings-row">
+    <div>
+      <div class="settings-label">🗓️ Suivi anti-gaspillage</div>
+      <div class="settings-desc">Ajoute une date de péremption facultative à tes ingrédients, avec une petite alerte s'ils vont bientôt périmer. Entièrement optionnel — tu n'es jamais obligé de renseigner une date.</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="antiWasteToggle">
+      <span class="switch-slider"></span>
+    </label>
+  </div>
+  <div id="wasteStats" class="waste-stats" hidden></div>
+</main>
+
+<main id="view-communaute" class="view" hidden>
+  <div class="state-msg">👥 Réseau &amp; communauté<br>Bientôt disponible — partage tes recettes et suis tes amis.</div>
+</main>
+
+<script>
+// ---- Données : catégories d'ingrédients (libellé FR -> valeur attendue par l'API TheMealDB) ----
+const CATEGORIES = [
+  { name: "Fruits & légumes", items: [
+    ["Tomate","Tomatoes"], ["Oignon","Onions"], ["Ail","Garlic"],
+    ["Pomme de terre","Potatoes"], ["Carotte","Carrots"], ["Épinard","Spinach"],
+    ["Courgette","Courgettes"], ["Poivron","Red_Pepper"], ["Champignon","Mushrooms"],
+    ["Citron","Lemon"], ["Pomme","Apple"], ["Banane","Banana"]
+  ]},
+  { name: "Viandes, poissons & œufs", items: [
+    ["Poulet","Chicken"], ["Blanc de poulet","Chicken_Breast"], ["Bœuf haché","Beef"],
+    ["Saumon","Salmon"], ["Thon","Tuna"], ["Crevettes","Prawns"], ["Œuf","Egg"]
+  ]},
+  { name: "Féculents & céréales", items: [
+    ["Riz","Rice"], ["Pâtes","Spaghetti"], ["Farine","Flour"], ["Lentilles","Lentils"], ["Pain","Bread"]
+  ]},
+  { name: "Produits laitiers", items: [
+    ["Lait","Milk"], ["Fromage","Cheese"], ["Beurre","Butter"], ["Yaourt","Yogurt"],
+    ["Crème fraîche","Cream"], ["Lait de coco","Coconut_Milk"]
+  ]},
+  { name: "Herbes & épices", items: [
+    ["Basilic","Basil"], ["Thym","Thyme"], ["Origan","Oregano"], ["Persil","Parsley"],
+    ["Coriandre","Coriander"], ["Cumin","Cumin"], ["Paprika","Paprika"], ["Cannelle","Cinnamon"],
+    ["Piment en poudre","Chili_Powder"], ["Curry","Curry_Powder"], ["Gingembre","Ginger"]
+  ]},
+  { name: "Épicerie & condiments", items: [
+    ["Huile d'olive","Olive_Oil"], ["Vinaigre","Vinegar"], ["Moutarde","Mustard"],
+    ["Sauce soja","Soy_Sauce"], ["Miel","Honey"], ["Ketchup","Tomato_Ketchup"],
+    ["Tomates concassées","Chopped_Tomatoes"], ["Concentré de tomate","Tomato_Puree"],
+    ["Bouillon de volaille","Chicken_Stock_Cube"], ["Bouillon de légumes","Vegetable_Stock_Cube"]
+  ]}
+];
+
+const API_BASE = "https://www.themealdb.com/api/json/v1/1/";
+const selected = new Set();
+
+// ---- Rendu des catégories / chips (repliables pour ne pas surcharger l'écran) ----
+function renderCategories(){
+  const previouslyOpen = new Set(
+    Array.from(document.querySelectorAll(".category.open")).map(el => el.dataset.idx)
+  );
+  const root = document.getElementById("categories");
+  root.innerHTML = CATEGORIES.map((cat, i) => `
+    <div class="category" data-idx="${i}">
+      <button class="cat-header" data-idx="${i}">
+        <span>${cat.name}</span>
+        <span class="cat-meta"><span class="cat-count"></span><span class="chevron">▾</span></span>
+      </button>
+      <div class="chips">
+        ${cat.items.slice().sort((a, b) => a[0].localeCompare(b[0], "fr")).map(([label, value]) => `
+          <button class="chip" data-value="${value}">${label}</button>
+        `).join("")}
+      </div>
+    </div>
+  `).join("");
+
+  root.querySelectorAll(".chip").forEach(btn => {
+    if (selected.has(btn.dataset.value)) btn.classList.add("selected");
+    btn.addEventListener("click", () => {
+      const value = btn.dataset.value;
+      if (selected.has(value)) {
+        selected.delete(value);
+        btn.classList.remove("selected");
+      } else {
+        selected.add(value);
+        btn.classList.add("selected");
+      }
+      updateSearchBtn();
+      updateCategoryCounts();
+      updateFridgeSummary();
+    });
+  });
+
+  root.querySelectorAll(".cat-header").forEach(header => {
+    header.addEventListener("click", () => {
+      const catEl = header.closest(".category");
+      const wasOpen = catEl.classList.contains("open");
+      root.querySelectorAll(".category").forEach(c => c.classList.remove("open"));
+      if (!wasOpen) catEl.classList.add("open");
+    });
+  });
+
+  root.querySelectorAll(".category").forEach(catEl => {
+    if (previouslyOpen.has(catEl.dataset.idx)) catEl.classList.add("open");
+  });
+
+  updateCategoryCounts();
+  const searchInput = document.getElementById("ingredientSearch");
+  if (searchInput.value.trim()) filterIngredients(searchInput.value.trim());
+}
+
+function updateCategoryCounts(){
+  document.querySelectorAll(".category").forEach((catEl, i) => {
+    const count = CATEGORIES[i].items.filter(([, value]) => selected.has(value)).length;
+    catEl.querySelector(".cat-count").textContent = count > 0 ? `(${count})` : "";
+  });
+}
+
+// ---- Recherche : filtre les chips par nom, replie les catégories sans résultat ----
+function filterIngredients(query){
+  const q = query.trim().toLowerCase();
+  document.querySelectorAll(".category").forEach(catEl => {
+    let anyVisible = false;
+    catEl.querySelectorAll(".chip").forEach(chip => {
+      const match = !q || chip.textContent.toLowerCase().includes(q);
+      chip.style.display = match ? "" : "none";
+      if (match) anyVisible = true;
+    });
+    catEl.hidden = q ? !anyVisible : false;
+    if (q && anyVisible) catEl.classList.add("open");
+  });
+}
+
+// ---- Réglages (menu ☰ → Paramètres) ----
+function loadSettings(){
+  try { return { antiWaste: false, ...JSON.parse(localStorage.getItem("foodme_settings") || "{}") }; }
+  catch(e) { return { antiWaste: false }; }
+}
+function saveSettings(s){ localStorage.setItem("foodme_settings", JSON.stringify(s)); }
+
+// ---- Anti-gaspillage (optionnel) : dates de péremption par ingrédient + compteur "sauvé du gaspillage" ----
+function loadExpiryDates(){
+  try { return JSON.parse(localStorage.getItem("foodme_expiry") || "{}"); }
+  catch(e) { return {}; }
+}
+function saveExpiryDates(d){ localStorage.setItem("foodme_expiry", JSON.stringify(d)); }
+function setExpiryDate(value, dateStr){
+  const dates = loadExpiryDates();
+  if (dateStr) dates[value] = dateStr; else delete dates[value];
+  saveExpiryDates(dates);
+  updateFridgeSummary();
+}
+function daysUntil(dateStr){
+  const diffMs = new Date(dateStr + "T00:00:00") - new Date(new Date().toDateString());
+  return Math.round(diffMs / 86400000);
+}
+function getWasteSavedCount(){ return parseInt(localStorage.getItem("foodme_waste_saved") || "0", 10); }
+function incrementWasteSaved(n){
+  localStorage.setItem("foodme_waste_saved", String(getWasteSavedCount() + n));
+}
+
+// ---- "Ton frigo actuellement" : résumé compact, groupé par catégorie, avec retrait rapide ----
+function updateFridgeSummary(){
+  const summaryEl = document.getElementById("fridgeSummary");
+  if (!summaryEl) return;
+  if (selected.size === 0) {
+    summaryEl.innerHTML = `<div class="state-msg" style="padding:12px 0;">Ton frigo est vide pour l'instant.</div>`;
+    return;
+  }
+  const antiWaste = loadSettings().antiWaste;
+  const expiry = antiWaste ? loadExpiryDates() : {};
+  summaryEl.innerHTML = CATEGORIES.map(cat => {
+    const items = cat.items.filter(([, value]) => selected.has(value));
+    if (items.length === 0) return "";
+    return `
+      <div class="fridge-group">
+        <div class="fridge-group-label">${cat.name}</div>
+        <div class="fridge-group-pills">
+          ${items.map(([label, value]) => {
+            const dateStr = expiry[value];
+            const days = dateStr ? daysUntil(dateStr) : null;
+            const warn = days !== null && days <= 3;
+            return `
+            <span class="pill${warn ? " expiring" : ""}" data-value="${value}">
+              ${label}${warn ? `<span class="expiry-tag">${days < 0 ? "⚠️ périmé" : days === 0 ? "⚠️ auj." : `⚠️ ${days}j`}</span>` : ""}
+              ${antiWaste ? `<button type="button" class="expiry-btn" data-value="${value}" aria-label="Date de péremption">📅</button>` : ""}
+              <button aria-label="Retirer">×</button>
+            </span>
+            ${antiWaste ? `<input type="date" class="expiry-input" data-value="${value}" value="${dateStr || ""}" hidden>` : ""}
+          `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+  }).join("");
+  if (antiWaste) {
+    summaryEl.querySelectorAll(".expiry-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const input = summaryEl.querySelector(`.expiry-input[data-value="${CSS.escape(btn.dataset.value)}"]`);
+        input.hidden = false;
+        try { input.showPicker ? input.showPicker() : input.focus(); }
+        catch(e) { input.focus(); } // showPicker() peut échouer selon le contexte (ex. aperçu en iframe) — on retombe sur le focus classique
+      });
+    });
+    summaryEl.querySelectorAll(".expiry-input").forEach(input => {
+      input.addEventListener("change", () => setExpiryDate(input.dataset.value, input.value));
+    });
+  }
+  summaryEl.querySelectorAll(".pill button[aria-label='Retirer']").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const value = btn.closest(".pill").dataset.value;
+      selected.delete(value);
+      renderCategories();
+      updateSearchBtn();
+      updateFridgeSummary();
+    });
+  });
+}
+
+function updateSearchBtn(){
+  const btn = document.getElementById("refreshCuisineBtn");
+  const countEl = document.getElementById("selectedCount");
+  if (!btn) return;
+  btn.disabled = selected.size === 0;
+  countEl.textContent = selected.size > 0 ? `(${selected.size})` : "";
+}
+
+const normalize = s => s.toLowerCase().replace(/_/g, " ").trim();
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+// ---- Ingrédients "de base" qu'on considère toujours dispo (pas besoin de les sélectionner) ----
+// Détection par mot-clé (et non égalité stricte) pour couvrir les variantes ("Ground Black Pepper", "Salt to taste"...)
+const BASIC_KEYWORDS = ["salt", "pepper", "water", "sugar"];
+function isBasic(nameNormalized){
+  return BASIC_KEYWORDS.some(k => new RegExp(`\\b${k}\\b`).test(nameNormalized));
+}
+
+// ---- Traduction FR des ingrédients affichés (l'API TheMealDB est en anglais) ----
+const TRANSLATIONS = {};
+CATEGORIES.forEach(cat => cat.items.forEach(([label, value]) => {
+  TRANSLATIONS[normalize(value)] = label.toLowerCase();
+}));
+// Ingrédients fréquents dans les recettes mais pas proposés en sélection (juste pour l'affichage)
+Object.assign(TRANSLATIONS, {
+  "salt": "sel", "pepper": "poivre", "black pepper": "poivre noir", "ground black pepper": "poivre noir moulu",
+  "water": "eau", "sugar": "sucre", "caster sugar": "sucre en poudre", "icing sugar": "sucre glace",
+  "vegetable oil": "huile végétale", "sunflower oil": "huile de tournesol", "sesame oil": "huile de sésame",
+  "sesame seed oil": "huile de sésame", "oil": "huile",
+  "plain flour": "farine", "self-raising flour": "farine avec levure incorporée", "cornflour": "maïzena",
+  "vegetable stock": "bouillon de légumes", "chicken stock": "bouillon de volaille", "beef stock": "bouillon de bœuf",
+  "baking powder": "levure chimique", "baking soda": "bicarbonate de soude", "vanilla extract": "extrait de vanille",
+  "lime": "citron vert", "lime juice": "jus de citron vert", "orange": "orange", "orange juice": "jus d'orange",
+  "spring onion": "oignon nouveau", "spring onions": "oignons nouveaux", "celery": "céleri",
+  "cucumber": "concombre", "lettuce": "salade", "avocado": "avocat", "mango": "mangue",
+  "pineapple": "ananas", "strawberries": "fraises", "blueberries": "myrtilles",
+  "almonds": "amandes", "walnuts": "noix", "peanuts": "cacahuètes", "cashew nuts": "noix de cajou",
+  "coconut": "noix de coco", "sesame seeds": "graines de sésame", "pasta": "pâtes", "noodles": "nouilles",
+  "couscous": "couscous", "quinoa": "quinoa", "chickpeas": "pois chiches", "kidney beans": "haricots rouges",
+  "black beans": "haricots noirs", "peas": "petits pois", "sweetcorn": "maïs", "cabbage": "chou",
+  "cauliflower": "chou-fleur", "broccoli": "brocoli", "leek": "poireau", "mint": "menthe",
+  "rosemary": "romarin", "sage": "sauge", "dill": "aneth", "chives": "ciboulette",
+  "nutmeg": "muscade", "turmeric": "curcuma", "cardamom": "cardamome", "cloves": "clous de girofle",
+  "fish sauce": "sauce poisson", "oyster sauce": "sauce huître", "hoisin sauce": "sauce hoisin",
+  "tahini": "tahini", "peanut butter": "beurre de cacahuète", "cream cheese": "fromage frais",
+  "mozzarella": "mozzarella", "parmesan": "parmesan", "feta": "feta", "ricotta": "ricotta",
+  "sour cream": "crème aigre", "buttermilk": "babeurre", "chocolate": "chocolat", "cocoa powder": "cacao en poudre",
+  "yeast": "levure", "red wine": "vin rouge", "white wine": "vin blanc", "beer": "bière",
+  "chilli": "piment", "chillies": "piments", "green chilli": "piment vert", "red chilli": "piment rouge",
+  "bay leaf": "feuille de laurier", "bay leaves": "feuilles de laurier",
+  "double cream": "crème épaisse", "white vinegar": "vinaigre blanc",
+  "balsamic vinegar": "vinaigre balsamique", "red wine vinegar": "vinaigre de vin rouge",
+  "dijon mustard": "moutarde de dijon", "english mustard": "moutarde anglaise",
+  "soy sauce": "sauce soja", "dark soy sauce": "sauce soja foncée",
+  "canned tomatoes": "tomates en boîte", "tomato puree": "concentré de tomate",
+  "chicken stock cube": "cube de bouillon de volaille", "vegetable stock cube": "cube de bouillon de légumes",
+  "breadcrumbs": "chapelure", "frog legs": "cuisses de grenouille", "frogs legs": "cuisses de grenouille",
+  "frog's legs": "cuisses de grenouille", "duck": "canard", "duck breast": "magret de canard",
+  "lamb": "agneau", "pork": "porc", "bacon": "lard", "sausage": "saucisse", "sausages": "saucisses",
+  "ham": "jambon", "turkey": "dinde", "rabbit": "lapin", "veal": "veau", "venison": "chevreuil",
+  "mussels": "moules", "crab": "crabe", "lobster": "homard", "squid": "calamar", "octopus": "poulpe",
+  "cod": "cabillaud", "haddock": "églefin", "trout": "truite", "sea bass": "bar", "sardines": "sardines",
+  "anchovies": "anchois", "asparagus": "asperges", "artichoke": "artichaut", "beetroot": "betterave",
+  "radish": "radis", "fennel": "fenouil", "pumpkin": "citrouille", "sweet potato": "patate douce",
+  "grapes": "raisins", "peach": "pêche", "pear": "poire", "cherries": "cerises",
+  "raspberries": "framboises", "kiwi": "kiwi", "watermelon": "pastèque", "melon": "melon"
+});
+// Qualificatifs courants (les recettes précisent souvent une variante : "Cherry Tomatoes", "Chopped Onions"...)
+const QUALIFIERS = {
+  "chopped": "haché", "cherry": "cerise", "plum": "allongée", "fresh": "frais", "dried": "séché",
+  "ground": "moulu", "sliced": "tranché", "diced": "en dés", "minced": "haché", "grated": "râpé",
+  "whole": "entier", "large": "gros", "small": "petit", "baby": "jeune", "ripe": "mûr",
+  "cooked": "cuit", "raw": "cru", "boneless": "sans os", "skinless": "sans peau",
+  "canned": "en boîte", "frozen": "surgelé", "red": "rouge", "green": "vert", "yellow": "jaune",
+  "white": "blanc", "black": "noir", "extra": "extra", "virgin": "vierge"
+};
+function lookupCore(word){
+  return TRANSLATIONS[word] || (word.endsWith("s") && TRANSLATIONS[word.slice(0, -1)]) || null;
+}
+
+// ---- Traduction des unités de mesure ("2 tbsp" -> "2 c. à soupe") ----
+const MEASURE_PHRASES = {
+  "to taste": "selon le goût", "as needed": "au besoin", "a pinch of": "une pincée de",
+  "a handful of": "une poignée de", "a dash of": "un trait de", "a knob of": "une noix de",
+  "a pinch": "une pincée"
+};
+const MEASURE_UNITS = {
+  "tbsp": "c. à soupe", "tbs": "c. à soupe", "tblsp": "c. à soupe", "tablespoon": "c. à soupe", "tablespoons": "c. à soupe",
+  "tsp": "c. à café", "teaspoon": "c. à café", "teaspoons": "c. à café",
+  "cup": "tasse", "cups": "tasses",
+  "oz": "once", "ounce": "once", "ounces": "onces",
+  "lb": "livre", "lbs": "livres", "pound": "livre", "pounds": "livres",
+  "pinch": "pincée", "pinches": "pincées", "dash": "trait",
+  "clove": "gousse", "cloves": "gousses",
+  "slice": "tranche", "slices": "tranches",
+  "can": "boîte", "cans": "boîtes", "tin": "boîte", "tins": "boîtes",
+  "packet": "paquet", "packets": "paquets", "pack": "paquet", "packs": "paquets",
+  "handful": "poignée", "handfuls": "poignées",
+  "sprig": "brin", "sprigs": "brins", "bunch": "botte", "bunches": "bottes",
+  "stick": "bâtonnet", "sticks": "bâtonnets", "piece": "morceau", "pieces": "morceaux",
+  "head": "tête", "heads": "têtes", "quart": "quart", "quarts": "quarts",
+  "pint": "pinte", "pints": "pintes", "knob": "noix", "of": "de",
+  "large": "gros", "small": "petit", "medium": "moyen"
+};
+function translateMeasure(measure){
+  if (!measure) return "";
+  let m = measure;
+  Object.entries(MEASURE_PHRASES).forEach(([phrase, fr]) => {
+    m = m.replace(new RegExp(phrase, "i"), fr);
+  });
+  return m.split(" ").map(tok => {
+    const clean = tok.toLowerCase().replace(/[.,]/g, "");
+    return MEASURE_UNITS[clean] || tok;
+  }).join(" ");
+}
+function translateIngredient(name){
+  const n = normalize(name);
+  if (TRANSLATIONS[n]) return cap(TRANSLATIONS[n]);
+  if (n.endsWith("s") && TRANSLATIONS[n.slice(0, -1)]) return cap(TRANSLATIONS[n.slice(0, -1)]);
+  if (TRANSLATIONS[n + "s"]) return cap(TRANSLATIONS[n + "s"]);
+
+  const words = n.split(" ");
+  // motif "X leaves" / "X leaf" -> "Feuilles de X" (basilic, laurier, menthe...)
+  if (words.length >= 2 && ["leaves", "leaf"].includes(words[words.length - 1])) {
+    const core = lookupCore(words.slice(0, -1).join(" ")) || words.slice(0, -1).join(" ");
+    return cap(`feuilles de ${core}`);
+  }
+  // motif "X seeds" -> "Graines de X"
+  if (words.length >= 2 && words[words.length - 1] === "seeds") {
+    const core = lookupCore(words.slice(0, -1).join(" ")) || words.slice(0, -1).join(" ");
+    return cap(`graines de ${core}`);
+  }
+  // Sinon : on traduit mot à mot ce qu'on reconnaît (ingrédient de base + qualificatifs), le reste reste en anglais
+  const translatedWords = words.map(w => TRANSLATIONS[w] || QUALIFIERS[w] || w);
+  if (translatedWords.some((w, i) => w !== words[i])) return cap(translatedWords.join(" "));
+
+  return name; // rien de reconnu : anglais en dernier recours plutôt que de bloquer
+}
+
+// ---- Traduction FR du nom de recette et de la préparation (textes libres, non couverts par le dictionnaire) ----
+// Service gratuit sans clé (MyMemory), avec cache localStorage pour ne jamais retraduire deux fois la même recette.
+const TRANSLATE_API = "https://api.mymemory.translated.net/get";
+const TRANSLATE_CHUNK_SIZE = 450; // limite raisonnable par requête
+
+function splitIntoChunks(text){
+  const sentences = text.split(/(?<=\.)\s+/);
+  const chunks = [];
+  let cur = "";
+  sentences.forEach(s => {
+    if (cur && (cur + " " + s).trim().length > TRANSLATE_CHUNK_SIZE) {
+      chunks.push(cur.trim());
+      cur = s;
+    } else {
+      cur = (cur + " " + s).trim();
+    }
+  });
+  if (cur) chunks.push(cur.trim());
+  return chunks;
+}
+
+async function translateChunk(text){
+  try {
+    const res = await fetch(`${TRANSLATE_API}?q=${encodeURIComponent(text)}&langpair=en|fr`);
+    const data = await res.json();
+    if (data.responseData && data.responseData.translatedText) return data.responseData.translatedText;
+  } catch (e) { /* pas de réseau ou quota atteint : on retombera sur l'anglais */ }
+  return null;
+}
+
+async function translateLongText(text, cacheKey){
+  if (!text) return { text: "", complete: true };
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) return { text: cached, complete: true };
+
+  const chunks = splitIntoChunks(text);
+  const translated = await Promise.all(chunks.map(translateChunk));
+  const complete = translated.every(c => c !== null);
+  const result = translated.map((c, i) => c || chunks[i]).join(" ");
+  if (complete) localStorage.setItem(cacheKey, result);
+  return { text: result, complete };
+}
+
+// ---- Découpage des instructions en étapes distinctes (utile quelle que soit l'API un jour) ----
+function splitInstructionsIntoSteps(instructions){
+  if (!instructions) return [];
+  let parts = instructions.split(/\r?\n+/).map(s => s.trim()).filter(Boolean);
+  parts = parts.map(p => p.replace(/^(step\s*\d+[:.\-]?\s*|\d+[.)]\s*)/i, "").trim()).filter(Boolean);
+  if (parts.length >= 2) return parts;
+  const sentences = instructions.split(/(?<=[.!])\s+(?=[A-Z])/).map(s => s.trim()).filter(Boolean);
+  return sentences.length > 0 ? sentences : [instructions.trim()];
+}
+
+// ---- Retour à la ligne entre chaque phrase d'une étape (plus lisible qu'un bloc compact) ----
+function formatStepText(text){
+  return text.split(/(?<=[.!?])\s+/).filter(Boolean).join("<br>");
+}
+
+// ---- Détection d'une durée dans une étape ("boil for 10 minutes"...) pour proposer un minuteur ----
+function detectTimer(stepText){
+  const match = stepText.match(/(\d+)(?:\s*-\s*(\d+))?\s*(hours?|hrs?|minutes?|mins?)\b/i);
+  if (!match) return null;
+  const num = match[2] ? parseInt(match[2], 10) : parseInt(match[1], 10); // intervalle : on prend la borne haute par sécurité
+  const isHour = /^h/i.test(match[3]);
+  return { seconds: isHour ? num * 3600 : num * 60, label: isHour ? `${num} h` : `${num} min` };
+}
+
+// ---- Estimation du temps de préparation (TheMealDB ne fournit pas cette donnée) ----
+// Heuristique : temps de "manipulation" par étape/ingrédient + durées de cuisson détectées dans les instructions.
+function estimatePrepTime(instructions, ingredientCount){
+  const steps = splitInstructionsIntoSteps(instructions);
+  const cookMinutes = steps.reduce((sum, s) => {
+    const t = detectTimer(s);
+    return sum + (t ? t.seconds / 60 : 0);
+  }, 0);
+  const handlingMinutes = steps.length * 4 + ingredientCount;
+  const total = Math.round((handlingMinutes + cookMinutes) / 5) * 5;
+  return Math.min(180, Math.max(10, total));
+}
+
+// ---- Minuteurs : plusieurs peuvent tourner en même temps, un bip sonore à la fin (aucun fichier externe requis) ----
+function playTimerAlarm(){
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.35, 0.7].forEach(delay => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.25, ctx.currentTime + delay);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + 0.25);
+    });
+  } catch (e) { /* audio indisponible, tant pis */ }
+}
+
+function attachStepTimers(container){
+  container.querySelectorAll(".timer").forEach(box => {
+    const totalSeconds = parseInt(box.dataset.seconds, 10);
+    let remaining = totalSeconds;
+    let tickInterval = null;
+    let alarmInterval = null;
+    let alarmTimeout = null;
+
+    const startBtn = box.querySelector(".timer-start");
+    const controls = box.querySelector(".timer-controls");
+    const display = box.querySelector(".timer-display");
+    const pauseBtn = box.querySelector(".timer-pause");
+    const resetBtn = box.querySelector(".timer-reset");
+    const stopAlarmBtn = box.querySelector(".timer-stop-alarm");
+
+    const render = () => {
+      const m = Math.floor(remaining / 60), s = remaining % 60;
+      display.textContent = `⏱ ${m}:${s.toString().padStart(2, "0")}`;
+    };
+
+    const stopAlarm = () => {
+      clearInterval(alarmInterval);
+      clearTimeout(alarmTimeout);
+      alarmInterval = null;
+      alarmTimeout = null;
+      stopAlarmBtn.hidden = true;
+    };
+
+    const ringAlarm = () => {
+      stopAlarmBtn.hidden = false;
+      playTimerAlarm();
+      alarmInterval = setInterval(playTimerAlarm, 2000);
+      alarmTimeout = setTimeout(stopAlarm, 10000); // sonne 10 secondes max
+    };
+
+    const tick = () => {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(tickInterval);
+        tickInterval = null;
+        display.textContent = "⏰ Terminé !";
+        ringAlarm();
+      } else {
+        render();
+      }
+    };
+
+    startBtn.addEventListener("click", () => {
+      startBtn.hidden = true;
+      controls.hidden = false;
+      render();
+      tickInterval = setInterval(tick, 1000);
+    });
+
+    pauseBtn.addEventListener("click", () => {
+      if (tickInterval) {
+        clearInterval(tickInterval);
+        tickInterval = null;
+        pauseBtn.textContent = "▶ Reprendre";
+      } else {
+        tickInterval = setInterval(tick, 1000);
+        pauseBtn.textContent = "⏸ Pause";
+      }
+    });
+
+    resetBtn.addEventListener("click", () => {
+      clearInterval(tickInterval);
+      tickInterval = null;
+      remaining = totalSeconds;
+      pauseBtn.textContent = "⏸ Pause";
+      stopAlarm();
+      controls.hidden = true;
+      startBtn.hidden = false;
+    });
+
+    stopAlarmBtn.addEventListener("click", stopAlarm);
+  });
+}
+
+// ---- Accordéon des étapes : une seule ouverte à la fois ----
+function attachStepAccordion(container){
+  const stepEls = container.querySelectorAll(".step");
+  stepEls.forEach(stepEl => {
+    stepEl.querySelector(".step-header").addEventListener("click", () => {
+      const wasOpen = stepEl.classList.contains("open");
+      stepEls.forEach(s => s.classList.remove("open"));
+      if (!wasOpen) stepEl.classList.add("open");
+    });
+  });
+}
+
+const recipeCache = new Map(); // id -> recette au format interne (évite un re-fetch au clic)
+
+// ---- Adaptateur API : seul endroit qui connaît le format de TheMealDB ----
+// Si on change de fournisseur de recettes un jour, c'est la SEULE fonction à réécrire :
+// tout le reste de l'appli (recherche, tri, traduction, affichage) travaille sur ce format neutre.
+function toInternalRecipe(meal){
+  const ingredients = [];
+  for (let i = 1; i <= 20; i++) {
+    const ing = meal[`strIngredient${i}`];
+    const measure = meal[`strMeasure${i}`];
+    if (ing && ing.trim()) ingredients.push({ name: ing.trim(), measure: (measure || "").trim() });
+  }
+  return {
+    id: meal.idMeal,
+    title: meal.strMeal,
+    image: meal.strMealThumb,
+    area: meal.strArea || "",
+    category: meal.strCategory || "",
+    ingredients,
+    instructions: (meal.strInstructions || "").trim()
+  };
+}
+
+// ---- Tri des résultats de recherche : par faisabilité (défaut) ou par temps de préparation ----
+let lastSearchResults = [];
+let cuisinerSort = "faisabilite";
+const CUISINER_SORT_LABELS = { faisabilite: "✅ Faisabilité", temps: "⏱ Temps de prépa" };
+
+function renderRecipeResults(){
+  const resultsEl = document.getElementById("results");
+  if (lastSearchResults.length === 0) return;
+
+  const sorted = [...lastSearchResults];
+  if (cuisinerSort === "temps") {
+    sorted.sort((a, b) => a.prepMinutes - b.prepMinutes);
+  } else {
+    sorted.sort((a, b) => a.missing.length - b.missing.length || a.totalIngredients - b.totalIngredients);
+  }
+
+  const sortBar = `
+    <div class="sort-bar">
+      ${Object.entries(CUISINER_SORT_LABELS).map(([key, label]) =>
+        `<button type="button" class="sort-btn${cuisinerSort === key ? " selected" : ""}" data-sort="${key}">${label}</button>`
+      ).join("")}
+    </div>`;
+
+  resultsEl.innerHTML = sortBar + sorted.map(r => `
+    <div class="recipe-card" data-id="${r.recipe.id}">
+      <img src="${r.recipe.image}/preview" alt="">
+      <div class="info">
+        <h3>${r.titleFr}</h3>
+        <div class="badges">
+          <span class="badge">⏱ ~${r.prepMinutes} min</span>
+        </div>
+        <div class="match ${r.missing.length === 0 ? 'ok' : ''}">
+          ${r.missing.length === 0
+            ? "✅ Faisable avec ce que tu as"
+            : `Il te manque ${r.missing.length} ingrédient${r.missing.length > 1 ? "s" : ""} : ${r.missing.slice(0, 3).map(m => translateIngredient(m.name)).join(", ")}${r.missing.length > 3 ? "…" : ""}`}
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  resultsEl.querySelectorAll(".sort-btn").forEach(btn => {
+    btn.addEventListener("click", () => { cuisinerSort = btn.dataset.sort; renderRecipeResults(); });
+  });
+  resultsEl.querySelectorAll(".recipe-card").forEach(card => {
+    card.addEventListener("click", () => showRecipeDetail(card.dataset.id));
+  });
+}
+
+// ---- Recherche de recettes 100% faisables (ou presque) avec ce qu'on a ----
+async function searchRecipes(){
+  const resultsEl = document.getElementById("results");
+  resultsEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Recherche en cours…</div>`;
+
+  const ingredients = Array.from(selected);
+  const overlapMap = new Map(); // idMeal -> { overlapCount, strMeal, strMealThumb }
+
+  try {
+    const responses = await Promise.all(
+      ingredients.map(ing =>
+        fetch(`${API_BASE}filter.php?i=${ing}`)
+          .then(r => { if (!r.ok) throw new Error("network"); return r.json(); })
+          .then(data => ({ ok: true, data }))
+          .catch(() => ({ ok: false }))
+      )
+    );
+
+    const allFailed = responses.every(r => !r.ok);
+    if (allFailed) {
+      resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
+      return;
+    }
+
+    responses.forEach(r => {
+      if (r.ok && r.data && r.data.meals) {
+        r.data.meals.forEach(m => {
+          const cur = overlapMap.get(m.idMeal);
+          if (cur) cur.overlapCount++;
+          else overlapMap.set(m.idMeal, { overlapCount: 1, strMeal: m.strMeal, strMealThumb: m.strMealThumb });
+        });
+      }
+    });
+
+    if (overlapMap.size === 0) {
+      resultsEl.innerHTML = `<div class="state-msg">Aucune recette trouvée avec ces ingrédients 😕<br>Essaie d'en sélectionner d'autres.</div>`;
+      return;
+    }
+
+    // On ne récupère le détail complet que pour les meilleurs candidats (limite le nb d'appels API)
+    const candidates = Array.from(overlapMap.entries())
+      .map(([idMeal, v]) => ({ idMeal, ...v }))
+      .sort((a, b) => b.overlapCount - a.overlapCount)
+      .slice(0, 25);
+
+    const details = await Promise.all(
+      candidates.map(c =>
+        fetch(`${API_BASE}lookup.php?i=${c.idMeal}`)
+          .then(r => r.json())
+          .then(d => (d.meals && d.meals[0]) || null)
+          .catch(() => null)
+      )
+    );
+
+    const selectedNormalized = new Set(ingredients.map(normalize));
+
+    const scored = details
+      .filter(Boolean)
+      .map(toInternalRecipe)
+      .map(recipe => {
+        const missing = recipe.ingredients.filter(({ name }) => {
+          const n = normalize(name);
+          return !selectedNormalized.has(n) && !isBasic(n);
+        });
+        recipeCache.set(recipe.id, recipe);
+        const prepMinutes = estimatePrepTime(recipe.instructions, recipe.ingredients.length);
+        return { recipe, totalIngredients: recipe.ingredients.length, missing, prepMinutes };
+      })
+      .sort((a, b) => a.missing.length - b.missing.length || a.totalIngredients - b.totalIngredients)
+      .slice(0, 12);
+
+    if (scored.length === 0) {
+      resultsEl.innerHTML = `<div class="state-msg">Aucune recette trouvée avec ces ingrédients 😕<br>Essaie d'en sélectionner d'autres.</div>`;
+      return;
+    }
+
+    // Traduction des titres (seulement les résultats affichés, pas tous les candidats, pour économiser le quota)
+    await Promise.all(scored.map(async r => {
+      const t = await translateLongText(r.recipe.title, `title_${r.recipe.id}`);
+      r.titleFr = t.text;
+    }));
+
+    lastSearchResults = scored;
+    renderRecipeResults();
+
+  } catch (e) {
+    resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
+  }
+}
+
+async function showRecipeDetail(id){
+  const resultsEl = document.getElementById("results");
+
+  let recipe = recipeCache.get(id);
+  if (!recipe) {
+    resultsEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Chargement de la recette…</div>`;
+    try {
+      const data = await fetch(`${API_BASE}lookup.php?i=${id}`).then(r => r.json());
+      const meal = data.meals && data.meals[0];
+      recipe = meal ? toInternalRecipe(meal) : null;
+    } catch (e) {
+      resultsEl.innerHTML = `<div class="state-msg">Impossible de charger cette recette. Vérifie ta connexion internet.</div>`;
+      return;
+    }
+  }
+  if (!recipe) {
+    resultsEl.innerHTML = `<div class="state-msg">Recette introuvable.</div>`;
+    return;
+  }
+
+  const selectedNormalized = new Set(Array.from(selected).map(normalize));
+  const missing = recipe.ingredients.filter(({ name }) => {
+    const n = normalize(name);
+    return !selectedNormalized.has(n) && !isBasic(n);
+  });
+
+  const rawSteps = splitInstructionsIntoSteps(recipe.instructions);
+  const stepTimers = rawSteps.map(detectTimer);
+
+  resultsEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Traduction en cours…</div>`;
+  const [titleT, ...stepTranslations] = await Promise.all([
+    translateLongText(recipe.title, `title_${recipe.id}`),
+    ...rawSteps.map((s, i) => translateLongText(s, `instr_${recipe.id}_step${i}`))
+  ]);
+  const translationIncomplete = !titleT.complete || stepTranslations.some(t => !t.complete);
+
+  resultsEl.innerHTML = `
+    <button class="back-btn" id="backBtn">← Retour aux résultats</button>
+    <div class="recipe-detail">
+      <img src="${recipe.image}" alt="">
+      <h3>${titleT.text}</h3>
+      <div class="meta">${recipe.area}${recipe.category ? " · " + recipe.category : ""}</div>
+      <div class="match ${missing.length === 0 ? 'ok' : ''}" style="margin-bottom:8px;">
+        ${missing.length === 0 ? "✅ Tu as tout ce qu'il faut" : `Il te manque : ${missing.map(m => translateIngredient(m.name)).join(", ")}`}
+      </div>
+      ${missing.length > 0 ? `<button type="button" class="rate-taste-btn" id="addMissingToListBtn">🛒 Ajouter ces ingrédients à la liste de courses</button>` : ""}
+      <h4>Ingrédients</h4>
+      <ul>${recipe.ingredients.map(({name, measure}) => `<li>${measure ? translateMeasure(measure) + " " : ""}${translateIngredient(name)}</li>`).join("")}</ul>
+      <h4>Préparation</h4>
+      <div class="steps">
+        ${rawSteps.map((s, i) => `
+          <div class="step${i === 0 ? ' open' : ''}">
+            <button class="step-header"><span>Étape ${i + 1}</span><span class="chevron">▾</span></button>
+            <div class="step-body">
+              <p class="step-text">${formatStepText(stepTranslations[i].text)}</p>
+              ${stepTimers[i] ? `
+                <div class="timer" data-seconds="${stepTimers[i].seconds}">
+                  <button class="timer-start">▶ Lancer le minuteur (${stepTimers[i].label})</button>
+                  <div class="timer-controls" hidden>
+                    <div class="timer-display"></div>
+                    <button class="timer-pause">⏸ Pause</button>
+                    <button class="timer-reset">↻ Réinitialiser</button>
+                  </div>
+                  <button class="timer-stop-alarm" hidden>🔕 Arrêter la sonnerie</button>
+                </div>` : ""}
+            </div>
+          </div>
+        `).join("")}
+      </div>
+      ${translationIncomplete ? `<p style="color:var(--ink-dim);font-size:12px;">⚠️ Traduction incomplète (quota du service atteint) — une partie du texte peut rester en anglais.</p>` : ""}
+      <button class="done-btn" id="doneBtn">✅ J'ai fait cette recette</button>
+    </div>
+  `;
+  document.getElementById("backBtn").addEventListener("click", searchRecipes);
+  attachStepAccordion(resultsEl);
+  attachStepTimers(resultsEl);
+  attachDoneFlow(recipe);
+  const addMissingBtn = document.getElementById("addMissingToListBtn");
+  if (addMissingBtn) {
+    addMissingBtn.addEventListener("click", () => {
+      addToShoppingList(missing.map(m => m.name));
+      addMissingBtn.textContent = "✅ Ajoutés à la liste de courses";
+      addMissingBtn.disabled = true;
+    });
+  }
+}
+
+// ---- Historique des plats cuisinés (localStorage) ----
+function loadCookedDishes(){
+  try { return JSON.parse(localStorage.getItem("foodme_cooked") || "[]"); }
+  catch(e) { return []; }
+}
+function saveCookedDishes(list){ localStorage.setItem("foodme_cooked", JSON.stringify(list)); }
+function addCookedDish(recipe, difficulty, photo){
+  const list = loadCookedDishes();
+  list.unshift({
+    id: recipe.id + "_" + list.length + "_" + Math.floor(Math.random()*1e6),
+    recipeId: recipe.id, title: recipe.title, image: recipe.image, photo: photo || null,
+    date: new Date().toISOString(), difficulty, taste: null, wouldRemake: null
+  });
+  saveCookedDishes(list);
+}
+
+// ---- Redimensionne une photo choisie/prise par l'utilisateur avant stockage (évite de saturer le localStorage) ----
+function resizePhoto(file, maxWidth){
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.onerror = () => resolve(null);
+      img.src = reader.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+// ---- Après avoir cuisiné : note la difficulté, puis demande quels ingrédients sont épuisés ----
+function attachDoneFlow(recipe){
+  const resultsEl = document.getElementById("results");
+  document.getElementById("doneBtn").addEventListener("click", () => {
+    const usedFromSelection = Array.from(selected).filter(v =>
+      recipe.ingredients.some(({ name }) => normalize(name) === normalize(v))
+    );
+    let difficulty = null;
+    let capturedPhoto = null;
+
+    resultsEl.innerHTML = `
+      <div class="recipe-detail">
+        <h3>Comment ça s'est passé ?</h3>
+        <p class="hint">Note la difficulté de la recette (facultatif).</p>
+        <div class="difficulty-picker" id="difficultyPicker">
+          <button type="button" data-value="facile">😌 Facile</button>
+          <button type="button" data-value="moyen">🙂 Moyen</button>
+          <button type="button" data-value="difficile">😅 Difficile</button>
+        </div>
+        <p class="hint" style="margin-top:18px;">Une photo de ton plat ? (facultatif)</p>
+        <input type="file" id="donePhotoInput" accept="image/*" capture="environment" hidden>
+        <div id="photoPreviewWrap" class="photo-preview-wrap" hidden>
+          <img id="photoPreview" alt="">
+          <button type="button" id="removePhotoBtn" aria-label="Retirer la photo">✕</button>
+        </div>
+        <button type="button" id="choosePhotoBtn" class="photo-btn">📷 Ajouter une photo</button>
+        ${usedFromSelection.length > 0 ? `
+        <h3 style="margin-top:22px;">Qu'est-ce qu'il ne te reste plus ?</h3>
+        <p class="hint">Coche les ingrédients que tu as entièrement utilisés — ils seront retirés de ton frigo.</p>
+        <div class="chips" id="doneChips">
+          ${usedFromSelection.map(v => `<button class="chip" data-value="${v}">${translateIngredient(v)}</button>`).join("")}
+        </div>` : ""}
+        <button class="confirm-btn" id="confirmDoneBtn">Valider</button>
+      </div>
+    `;
+    document.querySelectorAll("#difficultyPicker button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#difficultyPicker button").forEach(b => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        difficulty = btn.dataset.value;
+      });
+    });
+    const toRemove = new Set();
+    document.querySelectorAll("#doneChips .chip").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const v = btn.dataset.value;
+        if (toRemove.has(v)) { toRemove.delete(v); btn.classList.remove("selected"); }
+        else { toRemove.add(v); btn.classList.add("selected"); }
+      });
+    });
+
+    const choosePhotoBtn = document.getElementById("choosePhotoBtn");
+    const photoInput = document.getElementById("donePhotoInput");
+    const photoPreviewWrap = document.getElementById("photoPreviewWrap");
+    const photoPreview = document.getElementById("photoPreview");
+    choosePhotoBtn.addEventListener("click", () => photoInput.click());
+    photoInput.addEventListener("change", async () => {
+      const file = photoInput.files[0];
+      if (!file) return;
+      choosePhotoBtn.textContent = "⏳ Traitement…";
+      const dataUrl = await resizePhoto(file, 600);
+      if (dataUrl) {
+        capturedPhoto = dataUrl;
+        photoPreview.src = dataUrl;
+        photoPreviewWrap.hidden = false;
+        choosePhotoBtn.hidden = true;
+      } else {
+        choosePhotoBtn.textContent = "📷 Ajouter une photo";
+      }
+    });
+    document.getElementById("removePhotoBtn").addEventListener("click", () => {
+      capturedPhoto = null;
+      photoInput.value = "";
+      photoPreviewWrap.hidden = true;
+      choosePhotoBtn.hidden = false;
+      choosePhotoBtn.textContent = "📷 Ajouter une photo";
+    });
+
+    document.getElementById("confirmDoneBtn").addEventListener("click", () => {
+      addCookedDish(recipe, difficulty, capturedPhoto);
+      finishRecipe(Array.from(toRemove));
+    });
+  });
+}
+
+function finishRecipe(usedUpValues){
+  if (loadSettings().antiWaste) {
+    const expiry = loadExpiryDates();
+    let saved = 0;
+    usedUpValues.forEach(v => {
+      if (expiry[v] && daysUntil(expiry[v]) >= 0) saved++;
+      delete expiry[v];
+    });
+    saveExpiryDates(expiry);
+    if (saved > 0) incrementWasteSaved(saved);
+  }
+  usedUpValues.forEach(v => selected.delete(v));
+  renderCategories();
+  updateSearchBtn();
+  updateFridgeSummary();
+  document.getElementById("results").innerHTML = `<div class="state-msg">Recette marquée comme faite ✅${usedUpValues.length > 0 ? "<br>Ta liste d'ingrédients a été mise à jour." : ""}</div>`;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// ---- Onglet "Mes plats" : historique des recettes cuisinées ----
+const DIFFICULTY_LABELS = { facile: "😌 Facile", moyen: "🙂 Moyen", difficile: "😅 Difficile" };
+const DIFFICULTY_ORDER = { facile: 0, moyen: 1, difficile: 2 };
+const SORT_LABELS = { recent: "Plus récent", frequency: "Fois cuisiné", difficulty: "Difficulté" };
+let mesPlatsSort = "recent";
+
+function renderMesPlats(){
+  const list = loadCookedDishes();
+  const listEl = document.getElementById("mesPlatsList");
+  if (list.length === 0) {
+    listEl.innerHTML = `<div class="state-msg">Aucun plat cuisiné pour l'instant 🍳<br>Les recettes que tu termines dans l'onglet "Cuisiner" apparaîtront ici.</div>`;
+    return;
+  }
+
+  const countByRecipe = {};
+  list.forEach(d => { countByRecipe[d.recipeId] = (countByRecipe[d.recipeId] || 0) + 1; });
+
+  const sorted = [...list];
+  if (mesPlatsSort === "frequency") {
+    sorted.sort((a, b) => countByRecipe[b.recipeId] - countByRecipe[a.recipeId] || new Date(b.date) - new Date(a.date));
+  } else if (mesPlatsSort === "difficulty") {
+    sorted.sort((a, b) => {
+      const da = a.difficulty ? DIFFICULTY_ORDER[a.difficulty] : 99;
+      const db = b.difficulty ? DIFFICULTY_ORDER[b.difficulty] : 99;
+      return da - db || new Date(b.date) - new Date(a.date);
+    });
+  } else {
+    sorted.sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+
+  const sortBar = `
+    <div class="sort-bar">
+      ${Object.entries(SORT_LABELS).map(([key, label]) =>
+        `<button type="button" class="sort-btn${mesPlatsSort === key ? " selected" : ""}" data-sort="${key}">${label}</button>`
+      ).join("")}
+    </div>`;
+
+  listEl.innerHTML = sortBar + sorted.map(dish => {
+    const dateLabel = new Date(dish.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+    const fullyRated = dish.taste !== null && dish.wouldRemake !== null;
+    const timesCooked = countByRecipe[dish.recipeId];
+    return `
+      <div class="dish-card" data-id="${dish.id}">
+        <button type="button" class="dish-delete" data-id="${dish.id}" aria-label="Supprimer ce plat">✕</button>
+        <div class="dish-card-top">
+          <img src="${dish.photo || dish.image}" alt="">
+          <div>
+            <h3>${dish.title}</h3>
+            <div class="meta">${dateLabel}</div>
+            <div class="badges">
+              ${dish.difficulty ? `<span class="badge">${DIFFICULTY_LABELS[dish.difficulty]}</span>` : ""}
+              ${dish.taste !== null ? `<span class="badge">${"⭐".repeat(dish.taste)}</span>` : ""}
+              ${dish.wouldRemake === true ? `<span class="badge remake">🔁 À refaire</span>` : ""}
+              ${dish.wouldRemake === false ? `<span class="badge">Pas convaincu</span>` : ""}
+              ${timesCooked > 1 ? `<span class="badge">Cuisiné ${timesCooked} fois</span>` : ""}
+            </div>
+          </div>
+        </div>
+        ${!fullyRated ? `
+        <p class="hint" style="margin:10px 0 0;">${dish.taste === null ? "Comment c'était ?" : "Envie de refaire ?"}</p>
+        <div class="taste-form" data-id="${dish.id}">
+          ${dish.taste === null ? `
+          <div class="stars" data-id="${dish.id}">
+            ${[1,2,3,4,5].map(n => `<button type="button" data-star="${n}">★</button>`).join("")}
+          </div>` : `
+          <div class="remake-toggle" data-id="${dish.id}">
+            <button type="button" data-remake="1">🔁 À refaire</button>
+            <button type="button" data-remake="0">Pas convaincu</button>
+          </div>`}
+        </div>` : ""}
+      </div>
+    `;
+  }).join("");
+
+  listEl.querySelectorAll(".stars").forEach(starsEl => {
+    starsEl.querySelectorAll("button").forEach(starBtn => {
+      starBtn.addEventListener("click", () => rateTaste(starsEl.dataset.id, Number(starBtn.dataset.star)));
+    });
+  });
+  listEl.querySelectorAll(".remake-toggle button").forEach(btn => {
+    btn.addEventListener("click", () => setRemake(btn.closest(".remake-toggle").dataset.id, btn.dataset.remake === "1"));
+  });
+  listEl.querySelectorAll(".sort-btn").forEach(btn => {
+    btn.addEventListener("click", () => { mesPlatsSort = btn.dataset.sort; renderMesPlats(); });
+  });
+  listEl.querySelectorAll(".dish-delete").forEach(btn => {
+    btn.addEventListener("click", () => deleteDish(btn.dataset.id));
+  });
+}
+
+function deleteDish(dishId){
+  const list = loadCookedDishes().filter(d => d.id !== dishId);
+  saveCookedDishes(list);
+  renderMesPlats();
+}
+
+function rateTaste(dishId, stars){
+  const list = loadCookedDishes();
+  const dish = list.find(d => d.id === dishId);
+  if (dish) { dish.taste = stars; saveCookedDishes(list); renderMesPlats(); }
+}
+function setRemake(dishId, val){
+  const list = loadCookedDishes();
+  const dish = list.find(d => d.id === dishId);
+  if (dish) { dish.wouldRemake = val; saveCookedDishes(list); renderMesPlats(); }
+}
+
+// ---- Liste de courses (menu ☰, accessible depuis n'importe quel onglet) ----
+function loadShoppingList(){
+  try { return JSON.parse(localStorage.getItem("foodme_shopping") || "[]"); }
+  catch(e) { return []; }
+}
+function saveShoppingList(list){
+  localStorage.setItem("foodme_shopping", JSON.stringify(list));
+  updateMenuBadge();
+}
+function addToShoppingList(names){
+  const list = loadShoppingList();
+  names.forEach(name => {
+    const id = normalize(name);
+    if (!list.some(item => item.id === id)) {
+      list.push({ id, label: translateIngredient(name), checked: false });
+    }
+  });
+  saveShoppingList(list);
+}
+function toggleShoppingItem(id){
+  const list = loadShoppingList();
+  const item = list.find(i => i.id === id);
+  if (item) { item.checked = !item.checked; saveShoppingList(list); renderShoppingList(); }
+}
+function removeShoppingItem(id){
+  saveShoppingList(loadShoppingList().filter(i => i.id !== id));
+  renderShoppingList();
+}
+function clearShoppingList(){
+  saveShoppingList([]);
+  renderShoppingList();
+}
+function updateMenuBadge(){
+  const count = loadShoppingList().length;
+  const badge = document.getElementById("menuBadge");
+  const countLabel = document.getElementById("menuListCount");
+  badge.hidden = count === 0;
+  badge.textContent = count;
+  countLabel.textContent = count > 0 ? `(${count})` : "";
+}
+function renderShoppingList(){
+  const list = loadShoppingList();
+  const contentEl = document.getElementById("listeCoursesContent");
+  if (list.length === 0) {
+    contentEl.innerHTML = `<div class="state-msg">Ta liste de courses est vide 🛒<br>Depuis une recette, ajoute les ingrédients qu'il te manque en un clic.</div>`;
+    return;
+  }
+  contentEl.innerHTML = `
+    <h2>Ta liste de courses</h2>
+    ${list.map(item => `
+      <div class="shopping-item${item.checked ? " checked" : ""}" data-id="${item.id}">
+        <input type="checkbox" ${item.checked ? "checked" : ""}>
+        <label>${item.label}</label>
+        <button type="button" aria-label="Retirer">✕</button>
+      </div>
+    `).join("")}
+    <button type="button" class="clear-list-btn" id="clearListBtn">Tout effacer</button>
+  `;
+  contentEl.querySelectorAll(".shopping-item input").forEach(cb => {
+    cb.addEventListener("change", () => toggleShoppingItem(cb.closest(".shopping-item").dataset.id));
+  });
+  contentEl.querySelectorAll(".shopping-item button").forEach(btn => {
+    btn.addEventListener("click", () => removeShoppingItem(btn.closest(".shopping-item").dataset.id));
+  });
+  document.getElementById("clearListBtn").addEventListener("click", clearShoppingList);
+}
+
+// ---- Menu ☰ (liste de courses, paramètres) ----
+let lastMainTab = "frigo";
+function renderParametres(){
+  document.getElementById("antiWasteToggle").checked = loadSettings().antiWaste;
+  const statsEl = document.getElementById("wasteStats");
+  const count = getWasteSavedCount();
+  statsEl.hidden = count === 0;
+  statsEl.textContent = `🎉 ${count} ingrédient${count > 1 ? "s" : ""} sauvé${count > 1 ? "s" : ""} du gaspillage`;
+}
+document.getElementById("antiWasteToggle").addEventListener("change", (e) => {
+  const s = loadSettings();
+  s.antiWaste = e.target.checked;
+  saveSettings(s);
+  updateFridgeSummary();
+});
+function showSecondaryView(id){
+  document.getElementById("menuPanel").hidden = true;
+  document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== `view-${id}`);
+  if (id === "liste") renderShoppingList();
+  else if (id === "parametres") renderParametres();
+}
+document.getElementById("menuBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const panel = document.getElementById("menuPanel");
+  panel.hidden = !panel.hidden;
+});
+document.addEventListener("click", (e) => {
+  const panel = document.getElementById("menuPanel");
+  if (!panel.hidden && !panel.contains(e.target)) panel.hidden = true;
+});
+document.querySelectorAll(".menu-item").forEach(btn => {
+  btn.addEventListener("click", () => showSecondaryView(btn.dataset.action));
+});
+document.getElementById("backFromListeBtn").addEventListener("click", () => switchTab(lastMainTab));
+document.getElementById("backFromParametresBtn").addEventListener("click", () => switchTab(lastMainTab));
+
+// ---- Navigation par onglets ----
+function switchTab(tab){
+  lastMainTab = tab;
+  document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== `view-${tab}`);
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  if (tab === "cuisiner") {
+    if (selected.size === 0) {
+      document.getElementById("results").innerHTML = `<div class="state-msg">Ton frigo est vide 😕<br>Ajoute d'abord des ingrédients dans l'onglet "Mon frigo".</div>`;
+    } else {
+      searchRecipes();
+    }
+  } else if (tab === "mesplats") {
+    renderMesPlats();
+  }
+}
+document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
+updateMenuBadge();
+
+document.getElementById("toggleAddBtn").addEventListener("click", () => {
+  const catEl = document.getElementById("categories");
+  const searchEl = document.getElementById("ingredientSearch");
+  const isHidden = catEl.hasAttribute("hidden");
+  [catEl, searchEl].forEach(el => { if (isHidden) el.removeAttribute("hidden"); else el.setAttribute("hidden", ""); });
+  document.getElementById("toggleAddBtn").textContent = isHidden ? "✓ Terminé" : "+ Remplir mon frigo";
+  if (!isHidden) { searchEl.value = ""; filterIngredients(""); } // en fermant, on réinitialise le filtre
+});
+
+document.getElementById("ingredientSearch").addEventListener("input", (e) => filterIngredients(e.target.value));
+
+document.getElementById("refreshCuisineBtn").addEventListener("click", searchRecipes);
+renderCategories();
+updateFridgeSummary();
+</script>
+</body>
+</html>
