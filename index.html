@@ -96,6 +96,19 @@
   }
   .menu-item:hover{background:var(--surface-2);}
   .menu-count{color:var(--tomato-dark);font-weight:700;font-size:13px;}
+  .notif-panel{
+    position:absolute;top:60px;right:16px;z-index:20;
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);padding:14px;width:min(340px, calc(100vw - 32px));
+    max-height:70vh;overflow-y:auto;
+  }
+  .notif-panel h2{margin:0 0 10px;font-family:var(--font-display);font-weight:680;font-size:17px;color:var(--ink);}
+  .notif-panel .state-msg{padding:16px 4px;}
+  .notif-delete-btn{
+    background:none;border:none;color:var(--ink-dim);font-size:15px;cursor:pointer;
+    padding:2px 4px;line-height:1;flex-shrink:0;
+  }
+  .notif-delete-btn:hover{color:var(--tomato);}
   .shopping-item{
     display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);
     border-radius:12px;padding:12px 14px;margin-bottom:8px;
@@ -171,6 +184,7 @@
   .recipe-card img{
     width:78px;height:78px;border-radius:10px;object-fit:cover;flex-shrink:0;background:var(--surface-2);
   }
+  .recipe-card-img-placeholder{width:78px;height:78px;border-radius:10px;flex-shrink:0;background:var(--surface-2);}
   .recipe-card .info{flex:1;min-width:0;}
   .recipe-card .badges{margin:0 0 6px;}
   .recipe-card h3{
@@ -251,6 +265,11 @@
     color:var(--ink-dim);font-family:var(--font-body);font-size:12.5px;font-weight:600;cursor:pointer;
   }
   .sort-btn.selected{border-color:var(--tomato);background:var(--tomato-tint);color:var(--tomato-dark);}
+  .origin-select{
+    padding:7px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);
+    color:var(--ink-dim);font-family:var(--font-body);font-size:12.5px;font-weight:600;cursor:pointer;
+  }
+  .origin-select.selected{border-color:var(--tomato);background:var(--tomato-tint);color:var(--tomato-dark);}
   .dish-card{
     position:relative;
     background:var(--surface);border:1px solid var(--line);border-radius:14px;
@@ -267,6 +286,31 @@
   .dish-card .meta{color:var(--ink-dim);font-size:12.5px;}
   .dish-card .badges{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
   .badge{font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--surface-2);color:var(--ink-dim);}
+  .badge.custom{background:var(--tomato-tint);color:var(--tomato-dark);}
+  .recipe-author-link{background:none;border:none;padding:0;margin-left:6px;font-family:var(--font-body);font-size:12px;font-weight:500;color:var(--ink-dim);cursor:pointer;text-decoration:underline;text-underline-offset:2px;vertical-align:middle;}
+  .recipe-author-link:hover{color:var(--tomato);}
+  .section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;}
+  .section-header h3{margin:0;font-family:var(--font-display);font-size:16px;font-weight:600;color:var(--ink);}
+  .add-recipe-btn{
+    background:var(--tomato-tint);color:var(--tomato-dark);border:none;border-radius:999px;
+    padding:7px 14px;font-family:var(--font-body);font-size:12.5px;font-weight:700;cursor:pointer;flex-shrink:0;
+  }
+  .custom-recipe-form{
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:14px;box-shadow:var(--shadow);
+  }
+  .custom-recipe-form .search-input{margin-bottom:10px;display:block;width:100%;}
+  .custom-recipe-form textarea.search-input{min-height:80px;resize:vertical;font-family:var(--font-body);}
+  .custom-recipe-form h4{margin:16px 0 8px;font-size:12px;text-transform:uppercase;color:var(--tomato);letter-spacing:.08em;font-weight:700;}
+  .dyn-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .dyn-row .search-input{margin-bottom:0;flex:1;min-width:0;}
+  .dyn-remove{background:none;border:none;color:var(--ink-dim);font-size:14px;cursor:pointer;padding:6px;flex-shrink:0;}
+  .dyn-remove:hover{color:var(--tomato);}
+  .dyn-step{background:var(--surface-2);border-radius:12px;padding:10px;margin-bottom:10px;}
+  .dyn-step-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:13.5px;color:var(--ink);font-weight:600;}
+  .dyn-step .step-text{min-height:60px;margin-bottom:8px;}
+  .dyn-timer-row{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink-dim);}
+  .dyn-timer-row input{width:56px;padding:6px;border-radius:8px;border:1px solid var(--line);text-align:center;font-family:var(--font-body);}
+  .dyn-timer-row button,.add-timer-btn{background:none;border:none;color:var(--tomato);font-weight:600;font-size:12.5px;cursor:pointer;padding:2px 0;}
   .badge.remake{background:var(--basil-tint);color:var(--basil-ink);}
   .stars{display:flex;gap:4px;margin-top:10px;}
   .stars button{background:none;border:none;font-size:22px;cursor:pointer;padding:0;line-height:1;color:var(--line);}
@@ -333,7 +377,37 @@
     background:var(--surface);border:1px solid var(--line);border-radius:16px;
     padding:16px 16px 6px;margin-top:18px;box-shadow:var(--shadow);
   }
-  #view-parametres > h2, #view-notifications > h2{font-family:var(--font-display);font-weight:680;font-size:22px;margin:0 0 18px;color:var(--ink);}
+  #view-parametres > h2{font-family:var(--font-display);font-weight:680;font-size:22px;margin:0 0 18px;color:var(--ink);}
+  #view-semaine > h2{font-family:var(--font-display);font-weight:680;font-size:22px;margin:0 0 6px;color:var(--ink);}
+  .week-recipe-item{
+    display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);
+    border-radius:12px;padding:10px 12px;margin-bottom:8px;
+  }
+  .week-recipe-item img{width:52px;height:52px;border-radius:9px;object-fit:cover;flex-shrink:0;background:var(--surface-2);}
+  .week-recipe-item .info{flex:1;min-width:0;}
+  .week-recipe-item .info h4{margin:0 0 2px;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;}
+  .week-recipe-item .info h4:hover{text-decoration:underline;}
+  .week-recipe-item .info span{font-size:12px;color:var(--ink-dim);}
+  .week-recipe-item .week-remove-btn{background:none;border:none;color:var(--ink-dim);font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;}
+  .week-recipe-item .week-remove-btn:hover{color:var(--tomato);}
+  .week-mini-stepper{display:flex;align-items:center;gap:6px;margin-top:2px;}
+  .week-mini-stepper button{
+    width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--surface-2);
+    color:var(--tomato-dark);font-size:13px;font-weight:700;cursor:pointer;line-height:1;padding:0;flex-shrink:0;
+  }
+  .week-mini-stepper span{font-size:12px;color:var(--ink-dim);min-width:76px;}
+  .week-add-card-btn{
+    position:absolute;top:10px;right:10px;z-index:2;
+    background:var(--surface);border:1px solid var(--line);border-radius:999px;
+    width:30px;height:30px;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    box-shadow:var(--shadow);
+  }
+  .week-add-card-btn.added{background:var(--basil);border-color:var(--basil);color:#fff;}
+  .week-add-detail-btn{
+    width:100%;margin:10px 0 0;padding:11px;border-radius:11px;border:1px solid var(--line);
+    background:var(--surface);color:var(--ink);font-family:var(--font-body);font-weight:600;font-size:14px;cursor:pointer;
+  }
+  .week-add-detail-btn.added{background:var(--basil-tint);border-color:var(--basil);color:var(--basil-ink);}
   .fridge-summary h2{
     font-size:13px;text-transform:uppercase;color:var(--tomato-dark);letter-spacing:.06em;
     margin:0 0 14px;font-weight:700;padding-bottom:10px;border-bottom:1px solid var(--line);
@@ -514,25 +588,30 @@
   <div class="header-top">
     <h1>🍽️ FoodMe</h1>
     <div style="display:flex;align-items:center;gap:8px;">
-      <button type="button" id="notifBtn" class="menu-btn" aria-label="Notifications" hidden>🔔<span id="notifBadge" class="menu-badge" hidden></span></button>
       <button type="button" id="headerAvatarBtn" class="header-avatar-btn" aria-label="Mon profil" hidden></button>
+      <button type="button" id="notifBtn" class="menu-btn" aria-label="Notifications" hidden>🔔<span id="notifBadge" class="menu-badge" hidden></span></button>
       <button id="menuBtn" class="menu-btn" aria-label="Menu">☰</button>
     </div>
   </div>
   <nav id="tabbar">
-    <button class="tab-btn active" data-tab="frigo">🧊 Mon frigo</button>
+    <button class="tab-btn" data-tab="frigo">🧊 Mon frigo</button>
     <button class="tab-btn" data-tab="cuisiner">🍳 Cuisiner</button>
     <button class="tab-btn" data-tab="mesplats">📖 Mes plats</button>
-    <button class="tab-btn" data-tab="communaute">👥 Communauté</button>
+    <button class="tab-btn active" data-tab="communaute">👥 Communauté</button>
   </nav>
   <div id="menuPanel" class="menu-panel" hidden>
     <button type="button" class="menu-item" data-action="profil">👤 Profil</button>
+    <button type="button" class="menu-item" data-action="semaine">📅 Ma semaine <span id="menuWeekCount" class="menu-count"></span></button>
     <button type="button" class="menu-item" data-action="liste">🛒 Liste de courses <span id="menuListCount" class="menu-count"></span></button>
     <button type="button" class="menu-item" data-action="parametres">⚙️ Paramètres</button>
   </div>
+  <div id="notifPanel" class="notif-panel" hidden>
+    <h2>Notifications</h2>
+    <div id="notificationsList"></div>
+  </div>
 </header>
 
-<main id="view-frigo" class="view">
+<main id="view-frigo" class="view" hidden>
   <button id="toggleAddBtn" class="add-toggle-btn">+ Remplir mon frigo</button>
   <input type="text" id="ingredientSearch" class="search-input" placeholder="🔍 Rechercher un ingrédient…" hidden>
   <div id="categories" hidden></div>
@@ -554,11 +633,18 @@
 </main>
 
 <main id="view-mesplats" class="view" hidden>
+  <div id="customRecipesSection"></div>
   <div id="mesPlatsList"></div>
 </main>
 
 <main id="view-liste" class="view" hidden>
   <div id="listeCoursesContent"></div>
+</main>
+
+<main id="view-semaine" class="view" hidden>
+  <h2 style="margin-top:0;">Ma semaine</h2>
+  <p class="hint" style="margin-top:-8px;">Choisis les recettes que tu comptes cuisiner cette semaine, puis ajoute tous leurs ingrédients à ta liste de courses en une fois.</p>
+  <div id="semaineContent"></div>
 </main>
 
 <main id="view-parametres" class="view" hidden>
@@ -604,7 +690,7 @@
   <button type="button" class="danger-btn" id="signOutBtn" hidden>Se déconnecter</button>
 </main>
 
-<main id="view-communaute" class="view" hidden>
+<main id="view-communaute" class="view">
   <div id="authLoggedOut">
     <div class="auth-card">
       <h3 id="authTitle">Se connecter</h3>
@@ -680,11 +766,6 @@
     <div id="privateProfileMsg" class="state-msg" hidden>🔒 Ce compte est privé.<br>Abonne-toi pour voir ses publications.</div>
     <div class="profile-posts-section" id="profilePostsFeed"></div>
   </div>
-</main>
-
-<main id="view-notifications" class="view" hidden>
-  <h2 style="margin-top:0;">Notifications</h2>
-  <div id="notificationsList"></div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -789,9 +870,17 @@ async function pullFromCloudAndMerge(){
       saveExpiryDates(data.expiry || {});
       saveCookedDishes(data.cooked_dishes || []);
       saveShoppingList(data.shopping_list || []);
+      saveWeekRecipes(data.week_recipes || []);
+      saveCustomRecipes(data.custom_recipes || []);
+      // Filet de sécurité : garantit que les recettes perso de cet appareil sont bien dans la table
+      // partagée (utile pour les recettes créées avant l'ajout de cette synchronisation).
+      (data.custom_recipes || []).forEach(syncCustomRecipeToCloud);
     } else {
-      // Première connexion sur ce compte : on envoie ce qui existe déjà en local sur cet appareil
+      // Première connexion sur ce compte (aucune donnée sauvegardée pour l'instant) :
+      // on envoie ce qui existe déjà en local sur cet appareil, et on ouvre le frigo plutôt que Communauté
+      // pour inviter à le remplir — les connexions suivantes retomberont directement sur Communauté.
       await pushToCloud();
+      switchTab("frigo");
     }
     renderCategories();
     updateSearchBtn();
@@ -817,6 +906,8 @@ async function pushToCloud(){
       expiry: loadExpiryDates(),
       cooked_dishes: loadCookedDishes(),
       shopping_list: loadShoppingList(),
+      week_recipes: loadWeekRecipes(),
+      custom_recipes: loadCustomRecipes(),
       updated_at: new Date().toISOString()
     });
   } catch (e) { console.warn("Sauvegarde cloud impossible pour le moment :", e); }
@@ -1083,6 +1174,23 @@ async function loadNotifications(){
         } catch (e) { console.warn("Refus impossible :", e); }
       });
     });
+    listEl.querySelectorAll('[data-action="delete-notif"]').forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const item = btn.closest(".notif-item");
+        const notifId = item.dataset.notifId;
+        btn.disabled = true;
+        try {
+          const { error } = await sb.from("notifications").delete().eq("id", notifId);
+          if (error) throw error;
+          item.remove();
+          if (!listEl.querySelector(".notif-item")) listEl.innerHTML = `<div class="state-msg">Aucune notification pour l'instant.</div>`;
+        } catch (err) {
+          console.warn("Suppression de la notification impossible :", err);
+          btn.disabled = false;
+        }
+      });
+    });
     const unreadIds = notifs.filter(n => !n.read).map(n => n.id);
     if (unreadIds.length > 0) {
       await sb.from("notifications").update({ read: true }).in("id", unreadIds);
@@ -1108,13 +1216,14 @@ function renderNotificationHTML(n){
       <button type="button" class="rate-taste-btn" data-action="decline-follow" style="padding:6px 10px;font-size:12px;">Refuser</button>
     </div>` : "";
   return `
-    <div class="notif-item${n.read ? "" : " unread"}" data-actor-id="${n.actor_id}">
+    <div class="notif-item${n.read ? "" : " unread"}" data-actor-id="${n.actor_id}" data-notif-id="${n.id}">
       <div class="feed-avatar" style="${avatarStyle}">${avatarUrl ? "" : author[0].toUpperCase()}</div>
       <div class="notif-body">
         <div class="notif-text">${text}</div>
         <div class="notif-date">${formatFeedDate(n.created_at)}</div>
         ${actions}
       </div>
+      <button type="button" class="notif-delete-btn" data-action="delete-notif" aria-label="Supprimer la notification">✕</button>
     </div>
   `;
 }
@@ -1240,7 +1349,7 @@ function renderFeedCardHTML(post){
         </div>
       ` : `
         <div class="feed-title">${post.post_title || post.recipe_title}</div>
-        <div class="feed-recipe-link" data-recipe-id="${post.recipe_id}">🍽 ${post.recipe_title}${post.difficulty ? " · " + (DIFFICULTY_LABELS[post.difficulty] || "") : ""}</div>
+        <div class="feed-recipe-link" data-recipe-id="${post.recipe_id}">🍽 ${post.recipe_title}${post.difficulty ? " · " + (DIFFICULTY_LABELS[post.difficulty] || "") : ""}${post.is_custom_recipe ? ` <span class="badge custom">📝 Ma recette</span>` : ""}</div>
         ${post.comment ? `<p class="feed-comment-text">${post.comment}</p>` : ""}
       `}
       <div class="feed-actions">
@@ -1297,7 +1406,7 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
     if (!post) return;
 
     const recipeLink = e.target.closest(".feed-recipe-link");
-    if (recipeLink) { showRecipeDetail(recipeLink.dataset.recipeId, returnTo); return; }
+    if (recipeLink) { openRecipeDetail(recipeLink.dataset.recipeId, returnTo); return; }
 
     const authorLink = e.target.closest(".feed-author-link");
     if (authorLink) { showSecondaryView("profil", authorLink.dataset.userId); return; }
@@ -1872,6 +1981,9 @@ function daysUntil(dateStr){
   const diffMs = new Date(dateStr + "T00:00:00") - new Date(new Date().toDateString());
   return Math.round(diffMs / 86400000);
 }
+function formatShortExpiryDate(dateStr){
+  return new Date(dateStr + "T00:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
 function getWasteSavedCount(){ return parseInt(localStorage.getItem("foodme_waste_saved") || "0", 10); }
 function incrementWasteSaved(n){
   localStorage.setItem("foodme_waste_saved", String(getWasteSavedCount() + n));
@@ -1904,7 +2016,7 @@ function updateFridgeSummary(){
             const warn = days !== null && days <= 3;
             return `
             <span class="pill${warn ? " expiring" : ""}" data-value="${value}">
-              <span class="pill-label${antiWaste ? " clickable" : ""}" data-value="${value}">${label}${warn ? `<span class="expiry-tag">${days < 0 ? "⚠️ périmé" : days === 0 ? "⚠️ auj." : `⚠️ ${days}j`}</span>` : antiWaste ? `<span class="expiry-hint">📅</span>` : ""}</span>
+              <span class="pill-label${antiWaste ? " clickable" : ""}" data-value="${value}">${label}${warn ? `<span class="expiry-tag">${days < 0 ? "⚠️ périmé" : days === 0 ? "⚠️ auj." : `⚠️ ${days}j`}</span>` : (antiWaste && dateStr) ? `<span class="expiry-hint">📅 ${formatShortExpiryDate(dateStr)}</span>` : antiWaste ? `<span class="expiry-hint">📅</span>` : ""}</span>
               <button aria-label="Retirer">×</button>
             </span>
             ${antiWaste ? `<input type="date" class="expiry-input" data-value="${value}" value="${dateStr || ""}" hidden>` : ""}
@@ -2202,7 +2314,7 @@ function detectTimer(stepText){
 }
 
 // ---- Ajusteur de portions : recalcule les quantités affichées (TheMealDB ne donne pas de nombre de personnes, base 4) ----
-const BASE_SERVINGS = 4;
+const BASE_SERVINGS = 2;
 function parseQty(measure){
   const m = measure.match(/^(\d+)\s+(\d+)\/(\d+)|^(\d+)\/(\d+)|^(\d+(?:\.\d+)?)/);
   if (!m) return null;
@@ -2389,7 +2501,21 @@ let lastSearchResults = [];
 let currentRecipeReturnTo = "cuisiner";
 let cuisinerSort = "faisabilite";
 let dietFilter = "tous";
+let areaFilter = "toutes";
 let expiringOnly = false;
+let cuisinerSource = "toutes";
+const CUISINER_SOURCE_LABELS = { toutes: "Toutes les recettes", communaute: "👥 Recettes de la communauté" };
+// ---- Traduction FR des origines TheMealDB (pour le filtre déroulant "Origine") ----
+const ORIGIN_LABELS = {
+  American: "Américaine", British: "Britannique", Canadian: "Canadienne", Chinese: "Chinoise",
+  Croatian: "Croate", Dutch: "Néerlandaise", Egyptian: "Égyptienne", Filipino: "Philippine",
+  French: "Française", Greek: "Grecque", Indian: "Indienne", Irish: "Irlandaise", Italian: "Italienne",
+  Jamaican: "Jamaïcaine", Japanese: "Japonaise", Kenyan: "Kényane", Malaysian: "Malaisienne",
+  Mexican: "Mexicaine", Moroccan: "Marocaine", Polish: "Polonaise", Portuguese: "Portugaise",
+  Russian: "Russe", Spanish: "Espagnole", Thai: "Thaïlandaise", Tunisian: "Tunisienne",
+  Turkish: "Turque", Vietnamese: "Vietnamienne", Unknown: "Autre"
+};
+function translateOrigin(area){ return ORIGIN_LABELS[area] || area; }
 const CUISINER_SORT_LABELS = { faisabilite: "✅ Faisabilité", temps: "🔪 Temps de prépa", perissable: "🔥 Périssable en priorité" };
 const MEAT_CATEGORIES = new Set(["Beef", "Chicken", "Lamb", "Pork", "Goat"]);
 const DIET_FILTERS = {
@@ -2406,8 +2532,12 @@ function renderRecipeResults(){
   if (lastSearchResults.length === 0) return;
 
   const antiWaste = loadSettings().antiWaste;
-  let list = lastSearchResults.filter(DIET_FILTERS[dietFilter]);
+  const hasCommunity = lastSearchResults.some(r => r.isCustom);
+  if (!hasCommunity) cuisinerSource = "toutes"; // évite un filtre "coincé" sans bouton pour en sortir
+  let list = cuisinerSource === "communaute" ? lastSearchResults.filter(r => r.isCustom) : lastSearchResults;
+  list = list.filter(DIET_FILTERS[dietFilter]);
   if (antiWaste && expiringOnly) list = list.filter(r => r.soonestExpiryDays !== null);
+  if (areaFilter !== "toutes") list = list.filter(r => r.recipe.area === areaFilter);
 
   const sorted = [...list];
   if (cuisinerSort === "temps") {
@@ -2418,6 +2548,12 @@ function renderRecipeResults(){
     sorted.sort((a, b) => a.missing.length - b.missing.length || a.totalIngredients - b.totalIngredients);
   }
 
+  const sourceBar = hasCommunity ? `
+    <div class="sort-bar">
+      ${Object.entries(CUISINER_SOURCE_LABELS).map(([key, label]) =>
+        `<button type="button" class="sort-btn${cuisinerSource === key ? " selected" : ""}" data-source="${key}">${label}</button>`
+      ).join("")}
+    </div>` : "";
   const sortKeys = antiWaste && lastSearchResults.some(r => r.soonestExpiryDays !== null)
     ? Object.keys(CUISINER_SORT_LABELS) : Object.keys(CUISINER_SORT_LABELS).filter(k => k !== "perissable");
   const sortBar = `
@@ -2426,25 +2562,36 @@ function renderRecipeResults(){
         `<button type="button" class="sort-btn${cuisinerSort === key ? " selected" : ""}" data-sort="${key}">${CUISINER_SORT_LABELS[key]}</button>`
       ).join("")}
     </div>`;
+  const areas = Array.from(new Set(lastSearchResults.map(r => r.recipe.area).filter(Boolean)))
+    .sort((a, b) => translateOrigin(a).localeCompare(translateOrigin(b), "fr"));
   const filterBar = `
     <div class="sort-bar">
       ${Object.entries(DIET_LABELS).map(([key, label]) =>
         `<button type="button" class="sort-btn${dietFilter === key ? " selected" : ""}" data-diet="${key}">${label}</button>`
       ).join("")}
       ${antiWaste ? `<button type="button" class="sort-btn${expiringOnly ? " selected" : ""}" data-expiring="1">⚠️ Bientôt périmé</button>` : ""}
+      ${areas.length > 0 ? `
+        <select class="origin-select${areaFilter !== "toutes" ? " selected" : ""}" id="originSelect" aria-label="Filtrer par origine">
+          <option value="toutes">🌍 Toutes origines</option>
+          ${areas.map(a => `<option value="${a}"${areaFilter === a ? " selected" : ""}>${translateOrigin(a)}</option>`).join("")}
+        </select>` : ""}
     </div>`;
 
   if (sorted.length === 0) {
-    resultsEl.innerHTML = sortBar + filterBar + `<div class="state-msg">Aucune recette ne correspond à ce filtre 😕</div>`;
+    resultsEl.innerHTML = sourceBar + sortBar + filterBar + `<div class="state-msg">Aucune recette ne correspond à ce filtre 😕</div>`;
   } else {
-    resultsEl.innerHTML = sortBar + filterBar + sorted.map(r => `
+    resultsEl.innerHTML = sourceBar + sortBar + filterBar + sorted.map(r => `
       <div class="recipe-card" data-id="${r.recipe.id}">
-        <img src="${r.recipe.image}/preview" alt="">
+        <button type="button" class="week-add-card-btn${isInWeek(r.recipe.id) ? " added" : ""}" data-action="toggle-week" aria-label="Ajouter à ma semaine">📅</button>
+        ${r.isCustom
+          ? (r.recipe.image ? `<img src="${r.recipe.image}" alt="">` : `<div class="recipe-card-img-placeholder"></div>`)
+          : `<img src="${r.recipe.image}/preview" alt="">`}
         <div class="info">
           <h3>${r.titleFr}</h3>
           <div class="badges">
-            <span class="badge" title="Temps de prépa (actif)">🔪 ~${r.prepMinutes} min</span>
-            <span class="badge" title="Temps total, du début à l'assiette">⏱ ~${r.totalMinutes} min</span>
+            ${r.isCustom ? `<span class="badge custom">📝 ${r.authorName ? escAttr(r.authorName) : "Recette perso"}</span>` : ""}
+            ${(r.prepMinutes || !r.isCustom) ? `<span class="badge" title="Temps de prépa (actif)">🔪 ~${r.prepMinutes} min</span>` : ""}
+            ${(r.totalMinutes || !r.isCustom) ? `<span class="badge" title="Temps total, du début à l'assiette">⏱ ~${r.totalMinutes} min</span>` : ""}
             ${r.soonestExpiryDays !== null ? `<span class="badge">🔥 J-${Math.max(0, r.soonestExpiryDays)}</span>` : ""}
             ${!r.titleComplete ? `<span class="badge">⚠️ non traduit</span>` : ""}
           </div>
@@ -2458,6 +2605,9 @@ function renderRecipeResults(){
     `).join("");
   }
 
+  resultsEl.querySelectorAll(".sort-btn[data-source]").forEach(btn => {
+    btn.addEventListener("click", () => { cuisinerSource = btn.dataset.source; renderRecipeResults(); });
+  });
   resultsEl.querySelectorAll(".sort-btn[data-sort]").forEach(btn => {
     btn.addEventListener("click", () => { cuisinerSort = btn.dataset.sort; renderRecipeResults(); });
   });
@@ -2467,15 +2617,61 @@ function renderRecipeResults(){
   resultsEl.querySelectorAll(".sort-btn[data-expiring]").forEach(btn => {
     btn.addEventListener("click", () => { expiringOnly = !expiringOnly; renderRecipeResults(); });
   });
+  const originSelect = document.getElementById("originSelect");
+  if (originSelect) {
+    originSelect.addEventListener("change", () => { areaFilter = originSelect.value; renderRecipeResults(); });
+  }
   resultsEl.querySelectorAll(".recipe-card").forEach(card => {
-    card.addEventListener("click", () => showRecipeDetail(card.dataset.id));
+    card.addEventListener("click", () => openRecipeDetail(card.dataset.id, "cuisiner"));
   });
+  resultsEl.querySelectorAll('[data-action="toggle-week"]').forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const card = btn.closest(".recipe-card");
+      const r = sorted.find(x => String(x.recipe.id) === String(card.dataset.id));
+      if (!r) return;
+      const added = toggleWeekRecipe(r.recipe.id, r.titleFr, r.recipe.image, BASE_SERVINGS);
+      btn.classList.toggle("added", added);
+    });
+  });
+}
+
+// ---- Recettes perso partagées par la communauté (table Supabase custom_recipes), scorées comme les recettes TheMealDB ----
+async function fetchCommunityCustomResults(ingredients, titleQuery){
+  if (!sb) return [];
+  try {
+    let query = sb.from("custom_recipes").select("*, profiles(username)");
+    if (titleQuery) query = query.ilike("title", `%${titleQuery}%`);
+    const { data, error } = await query;
+    if (error || !data) return [];
+    return data.map(row => {
+      const recipeIngredients = row.ingredients || [];
+      const missing = recipeIngredients.filter(({ name }) => {
+        const n = normalize(name);
+        return name && !isBasic(n) && !ingredients.some(v => ingredientNamesMatch(name, v));
+      });
+      return {
+        recipe: { id: row.id, image: row.image, area: null, category: null },
+        titleFr: row.title,
+        prepMinutes: row.prep_minutes || null,
+        totalMinutes: row.total_minutes || null,
+        missing,
+        totalIngredients: recipeIngredients.length,
+        soonestExpiryDays: null,
+        titleComplete: true,
+        isCustom: true,
+        authorId: row.user_id,
+        authorName: (row.profiles && row.profiles.username) || null
+      };
+    });
+  } catch (e) { console.warn("Recettes communauté :", e); return []; }
 }
 
 // ---- Recherche de recettes 100% faisables (ou presque) avec ce qu'on a ----
 async function searchRecipes(){
   const resultsEl = document.getElementById("results");
   resultsEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Recherche en cours…</div>`;
+  cuisinerSource = "toutes";
 
   const ingredients = Array.from(selected);
   const overlapMap = new Map(); // idMeal -> { overlapCount, strMeal, strMealThumb }
@@ -2486,7 +2682,13 @@ async function searchRecipes(){
 
     const allFailed = responses.every(r => !r.ok);
     if (allFailed) {
-      resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
+      const community = await fetchCommunityCustomResults(ingredients);
+      if (community.length === 0) {
+        resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
+        return;
+      }
+      lastSearchResults = community;
+      renderRecipeResults();
       return;
     }
 
@@ -2500,28 +2702,27 @@ async function searchRecipes(){
       }
     });
 
-    if (overlapMap.size === 0) {
-      resultsEl.innerHTML = `<div class="state-msg">Aucune recette trouvée avec ces ingrédients 😕<br>Essaie d'en sélectionner d'autres.</div>`;
-      return;
-    }
-
     // On ne récupère le détail complet que pour les meilleurs candidats (limite le nb d'appels API)
     const candidates = Array.from(overlapMap.entries())
       .map(([idMeal, v]) => ({ idMeal, ...v }))
       .sort((a, b) => b.overlapCount - a.overlapCount)
       .slice(0, 25);
 
-    const rawDetails = await fetchJsonInBatches(candidates.map(c => `${API_BASE}lookup.php?i=${c.idMeal}`));
+    const rawDetails = overlapMap.size > 0 ? await fetchJsonInBatches(candidates.map(c => `${API_BASE}lookup.php?i=${c.idMeal}`)) : [];
     const details = rawDetails.map(d => (d && d.meals && d.meals[0]) || null);
 
-    const scored = (await scoreAndTranslate(details.filter(Boolean), ingredients)).slice(0, 12);
+    const [scored, community] = await Promise.all([
+      scoreAndTranslate(details.filter(Boolean), ingredients).then(s => s.slice(0, 12)),
+      fetchCommunityCustomResults(ingredients)
+    ]);
+    const combined = [...scored, ...community];
 
-    if (scored.length === 0) {
+    if (combined.length === 0) {
       resultsEl.innerHTML = `<div class="state-msg">Aucune recette trouvée avec ces ingrédients 😕<br>Essaie d'en sélectionner d'autres.</div>`;
       return;
     }
 
-    lastSearchResults = scored;
+    lastSearchResults = combined;
     renderRecipeResults();
 
   } catch (e) {
@@ -2564,15 +2765,22 @@ async function scoreAndTranslate(meals, ingredients){
 async function searchRecipeByName(query){
   const resultsEl = document.getElementById("results");
   resultsEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Recherche en cours…</div>`;
+  cuisinerSource = "toutes";
+  const ingredients = Array.from(selected);
   try {
     const data = await fetchJsonWithRetry(`${API_BASE}search.php?s=${encodeURIComponent(query)}`);
     const meals = data.meals || [];
-    if (meals.length === 0) {
+    const [scored, community] = await Promise.all([
+      scoreAndTranslate(meals.slice(0, 12), ingredients),
+      fetchCommunityCustomResults(ingredients, query)
+    ]);
+    const combined = [...scored, ...community];
+    if (combined.length === 0) {
       resultsEl.innerHTML = `<div class="state-msg">Aucune recette ne s'appelle "${query}" 😕<br><button type="button" class="rate-taste-btn" id="backToFridgeSearchBtn">← Revenir à mes ingrédients</button></div>`;
       document.getElementById("backToFridgeSearchBtn").addEventListener("click", searchRecipes);
       return;
     }
-    lastSearchResults = await scoreAndTranslate(meals.slice(0, 12), Array.from(selected));
+    lastSearchResults = combined;
     renderRecipeResults();
   } catch (e) {
     resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
@@ -2618,10 +2826,11 @@ async function showRecipeDetail(id, returnTo){
   recipe.titleFr = titleT.text; // conservé pour un usage ultérieur (ex. partage communautaire)
 
   const { prepMinutes, totalMinutes } = estimateTimes(recipe.instructions, recipe.ingredients.length);
-  let servings = BASE_SERVINGS;
+  const weekEntry = returnTo === "semaine" ? loadWeekRecipes().find(w => String(w.id) === String(id)) : null;
+  let servings = (weekEntry && weekEntry.servings) || BASE_SERVINGS;
 
   resultsEl.innerHTML = `
-    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "mesplats" ? "Retour à mes plats" : currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : "Retour aux résultats"}</button>
+    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "mesplats" ? "Retour à mes plats" : currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : "Retour aux résultats"}</button>
     <div class="recipe-detail">
       <img src="${recipe.image}" alt="">
       <h3>${titleT.text}</h3>
@@ -2641,9 +2850,9 @@ async function showRecipeDetail(id, returnTo){
         <button type="button" id="servingsPlus" aria-label="Plus de portions">+</button>
         <span>personnes</span>
       </div>
+      <button type="button" class="week-add-detail-btn${isInWeek(recipe.id) ? " added" : ""}" id="weekAddDetailBtn">${isInWeek(recipe.id) ? "✅ Dans ma semaine (retirer)" : "📅 Ajouter à ma semaine"}</button>
       <h4>Ingrédients</h4>
       <ul id="ingredientsList">${renderIngredientsHTML(recipe, servings)}</ul>
-      <p class="hint" style="margin-top:-8px;">Quantités estimées (TheMealDB ne précise pas le nombre de personnes d'origine, base 4).</p>
       <h4>Préparation</h4>
       <div class="steps">
         ${rawSteps.map((s, i) => `
@@ -2673,6 +2882,7 @@ async function showRecipeDetail(id, returnTo){
     if (currentRecipeReturnTo === "mesplats") switchTab("mesplats");
     else if (currentRecipeReturnTo === "communaute") switchTab("communaute");
     else if (currentRecipeReturnTo === "profil") showSecondaryView("profil", viewingProfileUserId);
+    else if (currentRecipeReturnTo === "semaine") showSecondaryView("semaine");
     else searchRecipes();
   });
   attachStepAccordion(resultsEl);
@@ -2695,6 +2905,12 @@ async function showRecipeDetail(id, returnTo){
       addMissingBtn.disabled = true;
     });
   }
+  const weekAddDetailBtn = document.getElementById("weekAddDetailBtn");
+  weekAddDetailBtn.addEventListener("click", () => {
+    const added = toggleWeekRecipe(recipe.id, titleT.text, recipe.image, servings);
+    weekAddDetailBtn.classList.toggle("added", added);
+    weekAddDetailBtn.textContent = added ? "✅ Dans ma semaine (retirer)" : "📅 Ajouter à ma semaine";
+  });
 }
 
 // ---- Historique des plats cuisinés (localStorage) ----
@@ -2706,11 +2922,155 @@ function saveCookedDishes(list){
   localStorage.setItem("foodme_cooked", JSON.stringify(list));
   scheduleCloudSync();
 }
+
+// ---- "Ma semaine" : recettes prévues pour la semaine, dont on additionnera les ingrédients ----
+function loadWeekRecipes(){
+  try { return JSON.parse(localStorage.getItem("foodme_week") || "[]"); }
+  catch(e) { return []; }
+}
+function saveWeekRecipes(list){
+  localStorage.setItem("foodme_week", JSON.stringify(list));
+  updateWeekMenuBadge();
+  scheduleCloudSync();
+}
+function updateWeekMenuBadge(){
+  const el = document.getElementById("menuWeekCount");
+  if (!el) return;
+  const n = loadWeekRecipes().length;
+  el.textContent = n > 0 ? `(${n})` : "";
+}
+function isInWeek(recipeId){
+  return loadWeekRecipes().some(w => String(w.id) === String(recipeId));
+}
+// ---- Ajoute ou retire une recette de "Ma semaine" ; renvoie true si elle vient d'être ajoutée ----
+function toggleWeekRecipe(recipeId, title, image, servings){
+  const list = loadWeekRecipes();
+  const idx = list.findIndex(w => String(w.id) === String(recipeId));
+  if (idx >= 0) { list.splice(idx, 1); saveWeekRecipes(list); return false; }
+  list.push({ id: recipeId, title, image, servings: servings || BASE_SERVINGS });
+  saveWeekRecipes(list);
+  return true;
+}
+// ---- Additionne les ingrédients de toutes les recettes de "Ma semaine" en une liste à ajouter aux courses ----
+// Règle validée avec Cyrille : ingrédient déjà au frigo → jamais ajouté. Ingrédient à quantité précise
+// (mesure purement numérique, ex. "2" pour des œufs) → quantités additionnées entre recettes. Ingrédient à
+// dosage approximatif (mesure avec unité, ex. "200g", "2 tbsp") → ajouté une seule fois, sans quantité calculée.
+async function buildWeekShoppingList(){
+  const week = loadWeekRecipes();
+  const preciseTotals = {}; // nom normalisé -> { name, qty }
+  const approxSeen = new Set();
+  const itemsToAdd = [];
+  for (const w of week) {
+    let recipe = recipeCache.get(w.id);
+    if (!recipe && String(w.id).startsWith("custom_")) {
+      recipe = loadCustomRecipes().find(r => r.id === w.id) || null;
+    }
+    if (!recipe && !String(w.id).startsWith("custom_")) {
+      try {
+        const data = await fetchJsonWithRetry(`${API_BASE}lookup.php?i=${w.id}`);
+        const meal = data.meals && data.meals[0];
+        recipe = meal ? toInternalRecipe(meal) : null;
+        if (recipe) recipeCache.set(w.id, recipe);
+      } catch (e) { continue; }
+    }
+    if (!recipe) continue;
+    const ratio = (w.servings || BASE_SERVINGS) / BASE_SERVINGS;
+    recipe.ingredients.forEach(({ name, measure }) => {
+      const n = normalize(name);
+      if (isBasic(n)) return;
+      if (Array.from(selected).some(v => ingredientNamesMatch(name, v))) return; // déjà au frigo
+      const trimmed = (measure || "").trim();
+      const isPrecise = /^\d+(\.\d+)?$/.test(trimmed);
+      if (isPrecise) {
+        if (!preciseTotals[n]) preciseTotals[n] = { name, qty: 0 };
+        preciseTotals[n].qty += parseFloat(trimmed) * ratio;
+      } else if (!approxSeen.has(n)) {
+        approxSeen.add(n);
+        itemsToAdd.push({ name });
+      }
+    });
+  }
+  Object.values(preciseTotals).forEach(({ name, qty }) => {
+    const rounded = Math.round(qty * 100) / 100;
+    const display = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+    itemsToAdd.push({ name, measure: display });
+  });
+  return itemsToAdd;
+}
+function renderSemaine(){
+  const week = loadWeekRecipes();
+  const container = document.getElementById("semaineContent");
+  if (week.length === 0) {
+    container.innerHTML = `<div class="state-msg">Aucune recette ajoutée pour l'instant.<br>Va dans Cuisiner et appuie sur 📅 sur une recette pour l'ajouter ici.</div>`;
+    return;
+  }
+  container.innerHTML = `
+    ${week.map(w => `
+      <div class="week-recipe-item" data-id="${w.id}">
+        <img src="${w.image || ""}" alt="">
+        <div class="info">
+          <h4 data-action="view-recipe">${w.title}</h4>
+          <div class="week-mini-stepper">
+            <button type="button" data-action="servings-minus" aria-label="Moins de personnes">−</button>
+            <span>Pour ${w.servings} personne${w.servings > 1 ? "s" : ""}</span>
+            <button type="button" data-action="servings-plus" aria-label="Plus de personnes">+</button>
+          </div>
+        </div>
+        <button type="button" class="week-remove-btn" aria-label="Retirer">🗑</button>
+      </div>
+    `).join("")}
+    <button type="button" class="primary-btn" id="weekAddAllBtn" style="margin-top:8px;">🛒 Ajouter les ingrédients manquants à la liste de courses</button>
+  `;
+  container.querySelectorAll(".week-remove-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.closest(".week-recipe-item").dataset.id;
+      saveWeekRecipes(loadWeekRecipes().filter(w => String(w.id) !== String(id)));
+      renderSemaine();
+    });
+  });
+  container.querySelectorAll('[data-action="view-recipe"]').forEach(el => {
+    el.addEventListener("click", () => {
+      const id = el.closest(".week-recipe-item").dataset.id;
+      openRecipeDetail(id, "semaine");
+    });
+  });
+  container.querySelectorAll('[data-action="servings-minus"], [data-action="servings-plus"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      const item = btn.closest(".week-recipe-item");
+      const id = item.dataset.id;
+      const list = loadWeekRecipes();
+      const w = list.find(x => String(x.id) === String(id));
+      if (!w) return;
+      const delta = btn.dataset.action === "servings-plus" ? 1 : -1;
+      w.servings = Math.max(1, Math.min(20, w.servings + delta));
+      saveWeekRecipes(list);
+      item.querySelector(".week-mini-stepper span").textContent = `Pour ${w.servings} personne${w.servings > 1 ? "s" : ""}`;
+    });
+  });
+  const addAllBtn = document.getElementById("weekAddAllBtn");
+  addAllBtn.addEventListener("click", async () => {
+    addAllBtn.disabled = true;
+    addAllBtn.textContent = "Ajout en cours…";
+    try {
+      const items = await buildWeekShoppingList();
+      addToShoppingList(items);
+      addAllBtn.textContent = "✅ Ajoutés à la liste de courses";
+    } catch (e) {
+      console.warn("Ajout des ingrédients de la semaine impossible :", e);
+      addAllBtn.disabled = false;
+      addAllBtn.textContent = "🛒 Ajouter les ingrédients manquants à la liste de courses";
+    }
+  });
+}
+
 // ---- Publication communautaire (V2 — Phase 2). Uniquement si la personne choisit de partager ; ----
 // ---- rien n'est envoyé à Supabase si la case reste décochée (recette gardée privée). ----
 async function publishToCommunity(recipe, difficulty, photoChoice, postTitle, comment){
   if (!sb || !currentUser) return false;
   try {
+    // Filet de sécurité : s'assure que la recette perso est bien dans la table partagée avant de la publier
+    // (utile pour d'anciennes recettes créées avant l'ajout de cette synchronisation).
+    if (recipe.isCustom) await syncCustomRecipeToCloud(recipe);
     let photoUrl = null;
     let hidePhoto = false;
     if (photoChoice && photoChoice.mode === "custom" && photoChoice.dataUrl) {
@@ -2732,7 +3092,8 @@ async function publishToCommunity(recipe, difficulty, photoChoice, postTitle, co
       hide_photo: hidePhoto,
       post_title: postTitle || null,
       comment: comment || null,
-      difficulty: difficulty || null
+      difficulty: difficulty || null,
+      is_custom_recipe: !!recipe.isCustom
     });
     if (error) throw error;
     return true;
@@ -3020,7 +3381,7 @@ function renderMesPlats(){
       <div class="dish-card" data-id="${dish.id}">
         <button type="button" class="dish-delete" data-id="${dish.id}" aria-label="Supprimer ce plat">✕</button>
         <div class="dish-card-top" data-recipe-id="${dish.recipeId}" role="button" tabindex="0">
-          <img src="${dish.photo || dish.image}" alt="">
+          ${(dish.photo || dish.image) ? `<img src="${dish.photo || dish.image}" alt="">` : `<div style="width:64px;height:64px;border-radius:10px;background:var(--surface-2);flex-shrink:0;"></div>`}
           <div>
             <h3>${dish.title}<span class="cook-count-badge" title="Cuisiné ${timesCooked} fois">${timesCooked}</span></h3>
             <div class="meta">${dateLabel}</div>
@@ -3049,7 +3410,7 @@ function renderMesPlats(){
   }).join("");
 
   listEl.querySelectorAll(".dish-card-top").forEach(top => {
-    top.addEventListener("click", () => showRecipeDetail(top.dataset.recipeId, "mesplats"));
+    top.addEventListener("click", () => openRecipeDetail(top.dataset.recipeId, "mesplats"));
   });
   listEl.querySelectorAll(".stars").forEach(starsEl => {
     starsEl.querySelectorAll("button").forEach(starBtn => {
@@ -3071,6 +3432,421 @@ function deleteDish(dishId){
   const list = loadCookedDishes().filter(d => d.id !== dishId);
   saveCookedDishes(list);
   renderMesPlats();
+}
+
+// ---- Recettes personnelles (créées à la main) ----
+function loadCustomRecipes(){
+  try { return JSON.parse(localStorage.getItem("foodme_custom_recipes") || "[]"); }
+  catch(e) { return []; }
+}
+function saveCustomRecipes(list){
+  localStorage.setItem("foodme_custom_recipes", JSON.stringify(list));
+  scheduleCloudSync();
+}
+// Rend une recette perso consultable par les autres (amis, communauté) via une table Supabase partagée.
+async function syncCustomRecipeToCloud(recipe){
+  if (!sb || !currentUser) return;
+  try {
+    await sb.from("custom_recipes").upsert({
+      id: recipe.id,
+      user_id: currentUser.id,
+      title: recipe.title,
+      ingredients: recipe.ingredients,
+      steps: recipe.steps,
+      image: recipe.image || null,
+      difficulty: recipe.difficulty || null,
+      prep_minutes: recipe.prepMinutes || null,
+      total_minutes: recipe.totalMinutes || null,
+      updated_at: new Date().toISOString()
+    });
+  } catch (e) { console.error("Sync recette perso :", e); }
+}
+async function deleteCustomRecipeFromCloud(id){
+  if (!sb || !currentUser) return;
+  try { await sb.from("custom_recipes").delete().eq("id", id).eq("user_id", currentUser.id); }
+  catch (e) { console.error("Suppression recette perso :", e); }
+}
+function escAttr(s){
+  return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+// Dispatcher : route vers la fiche TheMealDB ou la fiche recette perso selon l'identifiant
+function openRecipeDetail(id, returnTo){
+  if (String(id).startsWith("custom_")) return showCustomRecipeDetail(id, returnTo);
+  return showRecipeDetail(id, returnTo);
+}
+
+let customRecipeFormOpen = false;
+let customRecipeDraft = null;
+
+function newCustomRecipeDraft(){
+  return {
+    title: "",
+    ingredients: [{ measure: "", name: "" }],
+    steps: [{ text: "", timerMinutes: null }],
+    difficulty: null,
+    prepMinutes: "",
+    totalMinutes: "",
+    photo: null
+  };
+}
+
+function renderCustomRecipeFormHTML(draft){
+  return `
+    <div class="custom-recipe-form">
+      <input type="text" id="customRecipeTitle" class="search-input" placeholder="Titre de la recette" maxlength="80" value="${escAttr(draft.title)}">
+
+      <h4>Ingrédients</h4>
+      ${draft.ingredients.map((ing, i) => `
+        <div class="dyn-row" data-idx="${i}">
+          <input type="text" class="search-input ing-measure" data-idx="${i}" placeholder="Qté (ex : 200g)" value="${escAttr(ing.measure)}">
+          <input type="text" class="search-input ing-name" data-idx="${i}" placeholder="Ingrédient" value="${escAttr(ing.name)}">
+          ${draft.ingredients.length > 1 ? `<button type="button" class="dyn-remove" data-type="ingredient" data-idx="${i}" aria-label="Supprimer cet ingrédient">✕</button>` : ""}
+        </div>
+      `).join("")}
+      <button type="button" class="add-recipe-btn" id="addIngredientRow">+ Ajouter un ingrédient</button>
+
+      <h4>Étapes</h4>
+      ${draft.steps.map((step, i) => `
+        <div class="dyn-step" data-idx="${i}">
+          <div class="dyn-step-head">
+            <span>Étape ${i + 1}</span>
+            ${draft.steps.length > 1 ? `<button type="button" class="dyn-remove" data-type="step" data-idx="${i}" aria-label="Supprimer l'étape">✕</button>` : ""}
+          </div>
+          <textarea class="search-input step-text" data-idx="${i}" placeholder="Que faut-il faire à cette étape ?">${escAttr(step.text)}</textarea>
+          ${step.timerMinutes !== null ? `
+            <div class="dyn-timer-row">
+              <span>⏱</span>
+              <input type="number" min="1" max="180" class="step-timer-input" data-idx="${i}" value="${step.timerMinutes}">
+              <span>min</span>
+              <button type="button" class="dyn-remove-timer" data-idx="${i}">Retirer le minuteur</button>
+            </div>
+          ` : `<button type="button" class="add-timer-btn" data-idx="${i}">⏱ Ajouter un minuteur</button>`}
+        </div>
+      `).join("")}
+      <button type="button" class="add-recipe-btn" id="addStepRow">+ Ajouter une étape</button>
+
+      <h4>Difficulté et temps</h4>
+      <div class="difficulty-picker" id="customDifficultyPicker">
+        <button type="button" data-value="facile" class="${draft.difficulty === "facile" ? "selected" : ""}">😌 Facile</button>
+        <button type="button" data-value="moyen" class="${draft.difficulty === "moyen" ? "selected" : ""}">🙂 Moyen</button>
+        <button type="button" data-value="difficile" class="${draft.difficulty === "difficile" ? "selected" : ""}">😅 Difficile</button>
+      </div>
+      <div class="dyn-row" style="margin-top:10px;">
+        <input type="number" min="0" max="600" id="customRecipePrep" class="search-input" placeholder="Prépa (min)" value="${escAttr(draft.prepMinutes)}">
+        <input type="number" min="0" max="600" id="customRecipeTotal" class="search-input" placeholder="Total (min)" value="${escAttr(draft.totalMinutes)}">
+      </div>
+
+      <h4>Photo</h4>
+      <input type="file" id="customRecipePhotoInput" accept="image/*" hidden>
+      ${draft.photo ? `
+        <div class="photo-preview-wrap"><img src="${draft.photo}" alt=""><button type="button" id="customRecipePhotoRemove">✕</button></div>
+      ` : `<button type="button" class="photo-btn" id="customRecipePhotoBtn">📷 Ajouter une photo (facultatif)</button>`}
+
+      <button type="button" class="primary-btn" id="saveCustomRecipeBtn" style="margin-top:16px;">Ajouter à mes recettes</button>
+      <p id="customRecipeError" class="hint" style="color:var(--danger);display:none;"></p>
+    </div>
+  `;
+}
+
+function attachCustomRecipeFormListeners(){
+  const draft = customRecipeDraft;
+
+  document.getElementById("customRecipeTitle").addEventListener("input", e => { draft.title = e.target.value; });
+
+  document.querySelectorAll(".ing-measure").forEach(el => {
+    el.addEventListener("input", e => { draft.ingredients[Number(e.target.dataset.idx)].measure = e.target.value; });
+  });
+  document.querySelectorAll(".ing-name").forEach(el => {
+    el.addEventListener("input", e => { draft.ingredients[Number(e.target.dataset.idx)].name = e.target.value; });
+  });
+  document.getElementById("addIngredientRow").addEventListener("click", () => {
+    draft.ingredients.push({ measure: "", name: "" });
+    renderCustomRecipes();
+  });
+  document.querySelectorAll('.dyn-remove[data-type="ingredient"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      draft.ingredients.splice(Number(btn.dataset.idx), 1);
+      renderCustomRecipes();
+    });
+  });
+
+  document.querySelectorAll(".step-text").forEach(el => {
+    el.addEventListener("input", e => { draft.steps[Number(e.target.dataset.idx)].text = e.target.value; });
+  });
+  document.getElementById("addStepRow").addEventListener("click", () => {
+    draft.steps.push({ text: "", timerMinutes: null });
+    renderCustomRecipes();
+  });
+  document.querySelectorAll('.dyn-remove[data-type="step"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      draft.steps.splice(Number(btn.dataset.idx), 1);
+      renderCustomRecipes();
+    });
+  });
+  document.querySelectorAll(".add-timer-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      draft.steps[Number(btn.dataset.idx)].timerMinutes = 10;
+      renderCustomRecipes();
+    });
+  });
+  document.querySelectorAll(".dyn-remove-timer").forEach(btn => {
+    btn.addEventListener("click", () => {
+      draft.steps[Number(btn.dataset.idx)].timerMinutes = null;
+      renderCustomRecipes();
+    });
+  });
+  document.querySelectorAll(".step-timer-input").forEach(el => {
+    el.addEventListener("input", e => {
+      draft.steps[Number(e.target.dataset.idx)].timerMinutes = Number(e.target.value) || 1;
+    });
+  });
+
+  document.querySelectorAll("#customDifficultyPicker button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      draft.difficulty = draft.difficulty === btn.dataset.value ? null : btn.dataset.value;
+      renderCustomRecipes();
+    });
+  });
+
+  document.getElementById("customRecipePrep").addEventListener("input", e => { draft.prepMinutes = e.target.value; });
+  document.getElementById("customRecipeTotal").addEventListener("input", e => { draft.totalMinutes = e.target.value; });
+
+  const photoBtn = document.getElementById("customRecipePhotoBtn");
+  if (photoBtn) photoBtn.addEventListener("click", () => document.getElementById("customRecipePhotoInput").click());
+  document.getElementById("customRecipePhotoInput").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    draft.photo = await resizePhoto(file, 800);
+    renderCustomRecipes();
+  });
+  const removeBtn = document.getElementById("customRecipePhotoRemove");
+  if (removeBtn) removeBtn.addEventListener("click", () => { draft.photo = null; renderCustomRecipes(); });
+
+  document.getElementById("saveCustomRecipeBtn").addEventListener("click", saveNewCustomRecipe);
+}
+
+function renderCustomRecipes(){
+  const list = loadCustomRecipes();
+  const sectionEl = document.getElementById("customRecipesSection");
+  if (!sectionEl) return;
+
+  const cardsHtml = list.slice().reverse().map(r => `
+    <div class="dish-card" data-id="${r.id}">
+      <button type="button" class="dish-delete" data-id="${r.id}" aria-label="Supprimer cette recette">✕</button>
+      <div class="dish-card-top" data-id="${r.id}" role="button" tabindex="0">
+        ${r.image ? `<img src="${r.image}" alt="">` : `<div style="width:64px;height:64px;border-radius:10px;background:var(--surface-2);flex-shrink:0;"></div>`}
+        <div>
+          <h3>${r.title}</h3>
+          <div class="badges">
+            <span class="badge custom">📝 Ma recette</span>
+            ${r.difficulty ? `<span class="badge">${DIFFICULTY_LABELS[r.difficulty]}</span>` : ""}
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join("");
+
+  sectionEl.innerHTML = `
+    <div class="section-header">
+      <h3>📝 Mes recettes</h3>
+      <button type="button" class="add-recipe-btn" id="toggleCustomRecipeForm">${customRecipeFormOpen ? "Annuler" : "+ Ajouter une recette"}</button>
+    </div>
+    ${customRecipeFormOpen ? renderCustomRecipeFormHTML(customRecipeDraft) : ""}
+    ${list.length > 0 ? cardsHtml : (customRecipeFormOpen ? "" : `<p class="hint">Aucune recette perso pour l'instant.</p>`)}
+  `;
+
+  document.getElementById("toggleCustomRecipeForm").addEventListener("click", () => {
+    customRecipeFormOpen = !customRecipeFormOpen;
+    customRecipeDraft = customRecipeFormOpen ? newCustomRecipeDraft() : null;
+    renderCustomRecipes();
+  });
+
+  if (customRecipeFormOpen) attachCustomRecipeFormListeners();
+
+  sectionEl.querySelectorAll(".dish-card-top").forEach(top => {
+    top.addEventListener("click", () => showCustomRecipeDetail(top.dataset.id, "mesplats"));
+  });
+  sectionEl.querySelectorAll(".dish-delete").forEach(btn => {
+    btn.addEventListener("click", () => {
+      saveCustomRecipes(loadCustomRecipes().filter(r => r.id !== btn.dataset.id));
+      deleteCustomRecipeFromCloud(btn.dataset.id);
+      renderCustomRecipes();
+    });
+  });
+}
+
+function saveNewCustomRecipe(){
+  const draft = customRecipeDraft;
+  const errorEl = document.getElementById("customRecipeError");
+  const title = draft.title.trim();
+  const ingredients = draft.ingredients
+    .map(i => ({ measure: i.measure.trim(), name: i.name.trim() }))
+    .filter(i => i.name);
+  const steps = draft.steps
+    .map(s => ({ text: s.text.trim(), timerSeconds: s.timerMinutes ? Math.round(s.timerMinutes * 60) : null }))
+    .filter(s => s.text);
+
+  if (!title) { errorEl.textContent = "Donne un titre à ta recette."; errorEl.style.display = "block"; return; }
+  if (ingredients.length === 0) { errorEl.textContent = "Ajoute au moins un ingrédient (le nom, au minimum)."; errorEl.style.display = "block"; return; }
+  if (steps.length === 0) { errorEl.textContent = "Ajoute au moins une étape."; errorEl.style.display = "block"; return; }
+
+  const list = loadCustomRecipes();
+  const newRecipe = {
+    id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    title, ingredients, steps,
+    image: draft.photo || null,
+    difficulty: draft.difficulty || null,
+    prepMinutes: draft.prepMinutes ? Number(draft.prepMinutes) : null,
+    totalMinutes: draft.totalMinutes ? Number(draft.totalMinutes) : null,
+    createdAt: new Date().toISOString()
+  };
+  list.push(newRecipe);
+  saveCustomRecipes(list);
+  syncCustomRecipeToCloud(newRecipe);
+  customRecipeFormOpen = false;
+  customRecipeDraft = null;
+  renderCustomRecipes();
+}
+
+function formatCustomStepText(text){
+  return String(text).split(/(?<=[.!?])\s+/).filter(Boolean).join("<br>");
+}
+function formatTimerLabel(seconds){
+  return seconds % 3600 === 0 && seconds >= 3600 ? `${seconds / 3600} h` : `${Math.round(seconds / 60)} min`;
+}
+
+async function showCustomRecipeDetail(id, returnTo){
+  currentRecipeReturnTo = returnTo || "mesplats";
+  document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== "view-cuisiner");
+  const resultsEl = document.getElementById("results");
+
+  let recipe = loadCustomRecipes().find(r => r.id === id);
+  let authorId = null, authorName = null;
+  if (recipe) {
+    // Recette perso trouvée en local : c'est forcément la sienne.
+    authorId = currentUser ? currentUser.id : null;
+    authorName = (currentProfile && currentProfile.username) || (currentUser && currentUser.email.split("@")[0]) || null;
+  } else if (sb) {
+    // Pas en local (ex : recette d'un ami cliquée depuis le fil) : on va la chercher dans la table partagée.
+    resultsEl.innerHTML = `<div class="state-msg">Chargement…</div>`;
+    try {
+      const { data } = await sb.from("custom_recipes").select("*, profiles(username)").eq("id", id).maybeSingle();
+      if (data) {
+        recipe = {
+          id: data.id,
+          title: data.title,
+          ingredients: data.ingredients || [],
+          steps: data.steps || [],
+          image: data.image,
+          difficulty: data.difficulty,
+          prepMinutes: data.prep_minutes,
+          totalMinutes: data.total_minutes
+        };
+        authorId = data.user_id;
+        authorName = (data.profiles && data.profiles.username) || null;
+      }
+    } catch (e) { console.error("Chargement recette perso partagée :", e); }
+  }
+  if (!recipe) {
+    resultsEl.innerHTML = `<div class="state-msg">Cette recette perso n'est pas disponible ici.<br>Elle n'existe plus, ou son auteur ne l'a pas partagée publiquement.</div>`;
+    return;
+  }
+  recipe.titleFr = recipe.title; // compatibilité avec attachDoneFlow/publishToCommunity
+  recipe.isCustom = true;
+
+  const missing = recipe.ingredients.filter(({ name }) => {
+    const n = normalize(name);
+    return name && !isBasic(n) && !Array.from(selected).some(v => ingredientNamesMatch(name, v));
+  });
+
+  let servings = BASE_SERVINGS;
+
+  resultsEl.innerHTML = `
+    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : "Retour à mes plats"}</button>
+    <div class="recipe-detail">
+      ${recipe.image ? `<img src="${recipe.image}" alt="">` : ""}
+      <h3>${recipe.title}${authorName ? ` <button type="button" class="recipe-author-link" id="recipeAuthorLink" data-author-id="${authorId}">créé par ${escAttr(authorName)}</button>` : ""}</h3>
+      <div class="badges" style="margin-bottom:8px;">
+        <span class="badge custom">📝 Ma recette</span>
+        ${recipe.difficulty ? `<span class="badge">${DIFFICULTY_LABELS[recipe.difficulty]}</span>` : ""}
+      </div>
+      ${(recipe.prepMinutes || recipe.totalMinutes) ? `
+      <div class="badges" style="margin-bottom:8px;">
+        ${recipe.prepMinutes ? `<span class="badge" title="Temps de prépa (actif)">🔪 ~${recipe.prepMinutes} min</span>` : ""}
+        ${recipe.totalMinutes ? `<span class="badge" title="Temps total, du début à l'assiette">⏱ ~${recipe.totalMinutes} min</span>` : ""}
+      </div>` : ""}
+      <div class="match ${missing.length === 0 ? 'ok' : ''}" style="margin-bottom:8px;">
+        ${missing.length === 0 ? "✅ Tu as tout ce qu'il faut" : `Il te manque : ${missing.map(m => translateIngredient(m.name)).join(", ")}`}
+      </div>
+      ${missing.length > 0 ? `<button type="button" class="rate-taste-btn" id="addMissingToListBtn">🛒 Ajouter ces ingrédients à la liste de courses</button>` : ""}
+      <div class="servings-stepper">
+        <span>Pour</span>
+        <button type="button" id="servingsMinus" aria-label="Moins de portions">−</button>
+        <span id="servingsCount">${servings}</span>
+        <button type="button" id="servingsPlus" aria-label="Plus de portions">+</button>
+        <span>personnes</span>
+      </div>
+      <button type="button" class="week-add-detail-btn${isInWeek(recipe.id) ? " added" : ""}" id="weekAddDetailBtn">${isInWeek(recipe.id) ? "✅ Dans ma semaine (retirer)" : "📅 Ajouter à ma semaine"}</button>
+      <h4>Ingrédients</h4>
+      <ul id="ingredientsList">${renderIngredientsHTML(recipe, servings)}</ul>
+      <h4>Préparation</h4>
+      <div class="steps">
+        ${recipe.steps.map((s, i) => `
+          <div class="step${i === 0 ? ' open' : ''}">
+            <button class="step-header"><span>Étape ${i + 1}</span><span class="chevron">▾</span></button>
+            <div class="step-body">
+              <p class="step-text">${formatCustomStepText(s.text)}</p>
+              ${s.timerSeconds ? `
+                <div class="timer" data-seconds="${s.timerSeconds}">
+                  <button class="timer-start">▶ Lancer le minuteur (${formatTimerLabel(s.timerSeconds)})</button>
+                  <div class="timer-controls" hidden>
+                    <div class="timer-display"></div>
+                    <button class="timer-pause">⏸ Pause</button>
+                    <button class="timer-reset">↻ Réinitialiser</button>
+                  </div>
+                  <button class="timer-stop-alarm" hidden>🔕 Arrêter la sonnerie</button>
+                </div>` : ""}
+            </div>
+          </div>
+        `).join("")}
+      </div>
+      <button class="done-btn" id="doneBtn">✅ J'ai fait cette recette</button>
+    </div>
+  `;
+  document.getElementById("backBtn").addEventListener("click", () => {
+    if (currentRecipeReturnTo === "communaute") switchTab("communaute");
+    else if (currentRecipeReturnTo === "profil") showSecondaryView("profil", viewingProfileUserId);
+    else if (currentRecipeReturnTo === "semaine") showSecondaryView("semaine");
+    else switchTab("mesplats");
+  });
+  const authorLinkEl = document.getElementById("recipeAuthorLink");
+  if (authorLinkEl) authorLinkEl.addEventListener("click", () => showSecondaryView("profil", authorLinkEl.dataset.authorId));
+  attachStepAccordion(resultsEl);
+  attachStepTimers(resultsEl);
+  attachDoneFlow(recipe);
+  const ingredientsListEl = document.getElementById("ingredientsList");
+  const servingsCountEl = document.getElementById("servingsCount");
+  const updateServings = (delta) => {
+    servings = Math.max(1, Math.min(20, servings + delta));
+    servingsCountEl.textContent = servings;
+    ingredientsListEl.innerHTML = renderIngredientsHTML(recipe, servings);
+  };
+  document.getElementById("servingsMinus").addEventListener("click", () => updateServings(-1));
+  document.getElementById("servingsPlus").addEventListener("click", () => updateServings(1));
+  const addMissingBtn = document.getElementById("addMissingToListBtn");
+  if (addMissingBtn) {
+    addMissingBtn.addEventListener("click", () => {
+      addToShoppingList(missing);
+      addMissingBtn.textContent = "✅ Ajoutés à la liste de courses";
+      addMissingBtn.disabled = true;
+    });
+  }
+  const weekAddDetailBtn = document.getElementById("weekAddDetailBtn");
+  weekAddDetailBtn.addEventListener("click", () => {
+    const added = toggleWeekRecipe(recipe.id, recipe.title, recipe.image, servings);
+    weekAddDetailBtn.classList.toggle("added", added);
+    weekAddDetailBtn.textContent = added ? "✅ Dans ma semaine (retirer)" : "📅 Ajouter à ma semaine";
+  });
 }
 
 function rateTaste(dishId, stars){
@@ -3152,7 +3928,7 @@ function renderShoppingList(){
 }
 
 // ---- Menu ☰ (liste de courses, paramètres) ----
-let lastMainTab = "frigo";
+let lastMainTab = "communaute";
 function renderParametres(){
   document.getElementById("antiWasteToggle").checked = loadSettings().antiWaste;
   const statsEl = document.getElementById("wasteStats");
@@ -3208,22 +3984,30 @@ document.addEventListener("visibilitychange", () => {
 
 function showSecondaryView(id, param){
   document.getElementById("menuPanel").hidden = true;
+  document.getElementById("notifPanel").hidden = true;
   document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== `view-${id}`);
   if (id === "liste") { renderShoppingList(); requestWakeLock(); }
   else {
     releaseWakeLock();
     if (id === "parametres") renderParametres();
     else if (id === "profil") renderProfilView(param);
-    else if (id === "notifications") loadNotifications();
+    else if (id === "semaine") renderSemaine();
   }
 }
 document.getElementById("menuBtn").addEventListener("click", (e) => {
   e.stopPropagation();
+  document.getElementById("notifPanel").hidden = true;
   const panel = document.getElementById("menuPanel");
   panel.hidden = !panel.hidden;
 });
 document.getElementById("headerAvatarBtn").addEventListener("click", () => showSecondaryView("profil"));
-document.getElementById("notifBtn").addEventListener("click", () => showSecondaryView("notifications"));
+document.getElementById("notifBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  document.getElementById("menuPanel").hidden = true;
+  const panel = document.getElementById("notifPanel");
+  panel.hidden = !panel.hidden;
+  if (!panel.hidden) loadNotifications();
+});
 document.getElementById("feedModeToggle").addEventListener("click", (e) => {
   const btn = e.target.closest(".feed-mode-btn");
   if (!btn || btn.classList.contains("selected")) return;
@@ -3274,6 +4058,8 @@ document.getElementById("profileSearchResults").addEventListener("click", (e) =>
 document.addEventListener("click", (e) => {
   const panel = document.getElementById("menuPanel");
   if (!panel.hidden && !panel.contains(e.target)) panel.hidden = true;
+  const notifPanel = document.getElementById("notifPanel");
+  if (!notifPanel.hidden && !notifPanel.contains(e.target) && e.target.id !== "notifBtn" && !e.target.closest("#notifBtn")) notifPanel.hidden = true;
 });
 document.querySelectorAll(".menu-item").forEach(btn => {
   btn.addEventListener("click", () => showSecondaryView(btn.dataset.action));
@@ -3292,6 +4078,9 @@ function switchTab(tab){
       searchRecipes();
     }
   } else if (tab === "mesplats") {
+    customRecipeFormOpen = false;
+    customRecipeFormPhoto = null;
+    renderCustomRecipes();
     renderMesPlats();
   } else if (tab === "communaute") {
     renderCommunaute();
@@ -3299,6 +4088,7 @@ function switchTab(tab){
 }
 document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
 updateMenuBadge();
+updateWeekMenuBadge();
 
 function toggleFridgeAdd(){
   const catEl = document.getElementById("categories");
