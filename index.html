@@ -290,6 +290,21 @@
     position:absolute;top:0;right:0;width:9px;height:9px;border-radius:999px;
     background:var(--tomato);border:1.5px solid var(--surface);
   }
+  .menu-dot-inline{width:8px;height:8px;border-radius:999px;background:var(--tomato);flex-shrink:0;}
+  .mention-suggest-box{
+    position:fixed;z-index:10000;background:var(--surface);border:1px solid var(--line);
+    border-radius:10px;box-shadow:var(--shadow);overflow:hidden;
+  }
+  .mention-suggest-item{
+    display:block;width:100%;text-align:left;background:none;border:none;
+    padding:9px 12px;font-family:var(--font-body);font-size:13.5px;font-weight:600;
+    color:var(--ink);cursor:pointer;
+  }
+  .mention-suggest-item:hover{background:var(--surface-2);color:var(--tomato-dark);}
+  .mention-link{color:var(--tomato-dark);font-weight:600;cursor:pointer;}
+  .mention-link:hover{text-decoration:underline;}
+  .feed-tagged-link{color:var(--ink-dim);font-weight:600;cursor:pointer;}
+  .feed-tagged-link:hover{color:var(--tomato-dark);text-decoration:underline;}
   .badge.custom{background:var(--tomato-tint);color:var(--tomato-dark);}
   .recipe-author-link{background:none;border:none;padding:0;margin-left:6px;font-family:var(--font-body);font-size:12px;font-weight:500;color:var(--ink-dim);cursor:pointer;text-decoration:underline;text-underline-offset:2px;vertical-align:middle;}
   .recipe-author-link:hover{color:var(--tomato);}
@@ -526,6 +541,25 @@
     transition:background .15s;
   }
   .danger-btn:active{background:color-mix(in srgb, var(--danger) 10%, transparent);}
+  .danger-btn-solid{
+    display:block;width:100%;margin-top:12px;padding:13px;border:none;border-radius:12px;
+    background:var(--danger);color:#fff;font-family:var(--font-body);font-weight:700;font-size:14.5px;cursor:pointer;
+  }
+  .danger-btn-solid:active{opacity:.85;}
+  .danger-btn-solid:disabled{opacity:.4;cursor:not-allowed;}
+  .modal-overlay{
+    position:fixed;inset:0;z-index:20000;background:rgba(20,15,10,.55);
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .modal-card{
+    background:var(--surface);border-radius:16px;padding:24px;max-width:360px;width:100%;
+    box-shadow:0 10px 40px rgba(0,0,0,.25);
+  }
+  .modal-card h3{margin:0 0 10px;font-family:var(--font-display);font-weight:680;font-size:18px;color:var(--ink);}
+  .modal-card p{margin:0 0 16px;font-size:14px;color:var(--ink-dim);line-height:1.5;}
+  .modal-card .search-input{margin-bottom:16px;}
+  .modal-actions{display:flex;gap:10px;}
+  .modal-actions button{flex:1;margin:0;}
   .auth-error{color:var(--danger);font-size:13px;margin-top:10px;}
   .auth-info{color:var(--basil-ink);background:var(--basil-tint);padding:10px 12px;border-radius:10px;font-size:13px;margin-top:10px;line-height:1.5;}
   .avatar-row{display:flex;align-items:center;gap:12px;}
@@ -553,6 +587,11 @@
   .feed-comment-text{font-size:13.5px;line-height:1.5;margin:6px 0;white-space:pre-wrap;}
   .feed-actions{display:flex;gap:16px;margin-top:10px;align-items:center;}
   .like-btn{background:none;border:none;font-size:14px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;gap:5px;}
+  .feed-rating-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
+  .star-picker{display:flex;}
+  .star-btn{background:none;border:none;font-size:16px;line-height:1;cursor:pointer;padding:2px;color:var(--ink-dim);}
+  .star-btn.filled{color:inherit;}
+  .rating-avg{font-size:12.5px;color:var(--ink-dim);}
   .like-btn.liked{color:var(--tomato);}
   .feed-comments{margin-top:10px;border-top:1px solid var(--line);padding-top:10px;}
   .feed-comment-item{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:13px;margin-bottom:6px;line-height:1.4;}
@@ -588,6 +627,10 @@
 </head>
 <body>
 
+<div id="deleteAccountOverlay" class="modal-overlay" hidden>
+  <div class="modal-card" id="deleteAccountCard"></div>
+</div>
+
 <header>
   <div class="header-top">
     <h1>🍽️ FoodMe</h1>
@@ -607,7 +650,7 @@
     <button type="button" class="menu-item" data-action="profil">👤 Profil</button>
     <button type="button" class="menu-item" data-action="semaine">📅 Ma semaine <span id="menuWeekCount" class="menu-count"></span></button>
     <button type="button" class="menu-item" data-action="liste">🛒 Liste de courses <span id="menuListCount" class="menu-count"></span></button>
-    <button type="button" class="menu-item" data-action="parametres">⚙️ Paramètres</button>
+    <button type="button" class="menu-item" data-action="parametres">⚙️ Paramètres<span id="menuItemUpdateDot" class="menu-dot-inline" hidden></span></button>
   </div>
   <div id="notifPanel" class="notif-panel" hidden>
     <h2>Notifications</h2>
@@ -678,6 +721,15 @@
           <span class="switch-slider"></span>
         </label>
       </div>
+      <div style="margin-top:18px;">
+        <div class="settings-label">🏷️ Qui peut te taguer</div>
+        <div class="settings-desc" style="margin-bottom:10px;">Te mentionner (@pseudo) dans une publication ou un commentaire, ou t'ajouter comme "Fait avec..." sur une publication.</div>
+        <div class="difficulty-picker" id="taggingPermissionPicker">
+          <button type="button" data-value="everyone">🌍 Tout le monde</button>
+          <button type="button" data-value="following">👥 Mes abonnements</button>
+          <button type="button" data-value="nobody">🚫 Personne</button>
+        </div>
+      </div>
     </div>
   </div>
   <div class="settings-row" style="margin-top:22px;">
@@ -699,6 +751,7 @@
     <button type="button" class="rate-taste-btn" id="checkUpdateBtn" style="flex-shrink:0;">Vérifier</button>
   </div>
   <button type="button" class="danger-btn" id="signOutBtn" hidden>Se déconnecter</button>
+  <button type="button" class="danger-btn-solid" id="deleteAccountBtn" hidden>🗑 Supprimer mon compte</button>
 </main>
 
 <main id="view-communaute" class="view">
@@ -748,12 +801,13 @@
   </div>
   <div id="authLoggedIn" hidden>
     <div class="feed-search-wrap">
-      <input type="text" id="profileSearchInput" class="search-input" placeholder="🔍 Trouver quelqu'un…" autocomplete="off">
+      <input type="text" id="profileSearchInput" class="search-input" placeholder="🔍 Un pseudo ou un #hashtag…" autocomplete="off">
       <div id="profileSearchResults" class="profile-search-results" hidden></div>
     </div>
     <div class="feed-mode-toggle" id="feedModeToggle">
       <button type="button" class="feed-mode-btn selected" data-mode="public">🌍 Public</button>
       <button type="button" class="feed-mode-btn" data-mode="mine">👥 Mes abonnements</button>
+      <button type="button" class="feed-mode-btn" data-mode="decouvrir">🔥 Découvrir</button>
     </div>
     <div id="feedContainer"></div>
   </div>
@@ -777,6 +831,12 @@
     <div id="privateProfileMsg" class="state-msg" hidden>🔒 Ce compte est privé.<br>Abonne-toi pour voir ses publications.</div>
     <div class="profile-posts-section" id="profilePostsFeed"></div>
   </div>
+</main>
+
+<main id="view-hashtag" class="view" hidden>
+  <button class="back-btn" id="hashtagBackBtn">← Retour à la communauté</button>
+  <h2 style="margin:10px 0 16px;" id="hashtagTitle">#</h2>
+  <div class="profile-posts-section" id="hashtagPostsFeed"></div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -834,8 +894,9 @@ async function initAuth(){
 
 async function loadProfile(user){
   currentUser = user;
+  friendListCache = null;
   try {
-    const { data } = await sb.from("profiles").select("username, avatar_color, avatar_url, is_private").eq("id", user.id).single();
+    const { data } = await sb.from("profiles").select("username, avatar_color, avatar_url, is_private, tagging_permission").eq("id", user.id).single();
     currentProfile = data || null;
   } catch (e) { currentProfile = null; }
   await uploadPendingAvatarIfAny();
@@ -1105,6 +1166,51 @@ function renderProfileFeed(posts){
   container.innerHTML = posts.map(renderFeedCardHTML).join("");
 }
 
+// ---- Publications portant un hashtag donné : mêmes cartes que le fil, filtrées via post_hashtags ----
+let currentHashtag = null;
+function renderHashtagView(tag){
+  currentHashtag = tag;
+  document.getElementById("hashtagTitle").textContent = `#${tag}`;
+  loadHashtagPosts(tag);
+}
+async function loadHashtagPosts(tag){
+  const feedEl = document.getElementById("hashtagPostsFeed");
+  feedEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Chargement…</div>`;
+  if (!sb) return;
+  try {
+    const { data: links, error: linksError } = await sb
+      .from("post_hashtags")
+      .select("post_id")
+      .eq("hashtag", tag);
+    if (linksError) throw linksError;
+    const postIds = (links || []).map(l => l.post_id);
+    if (postIds.length === 0) { renderHashtagFeed([]); return; }
+    const { data, error } = await sb
+      .from("posts")
+      .select(FEED_SELECT)
+      .in("id", postIds)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    const posts = data || [];
+    await attachCommentLikes(posts);
+    editingPostId = null;
+    renderHashtagFeed(posts);
+  } catch (e) {
+    console.warn("Chargement des publications du hashtag impossible :", e);
+    feedEl.innerHTML = `<div class="state-msg">Impossible de charger ces publications.</div>`;
+  }
+}
+function renderHashtagFeed(posts){
+  feedPostsCache = posts;
+  const container = document.getElementById("hashtagPostsFeed");
+  if (posts.length === 0) {
+    container.innerHTML = `<div class="state-msg">Aucune publication avec ce hashtag pour l'instant.</div>`;
+    return;
+  }
+  container.innerHTML = posts.map(renderFeedCardHTML).join("");
+}
+document.getElementById("hashtagBackBtn").addEventListener("click", () => switchTab("communaute"));
+
 // ---- Fil communautaire (V2 — Phase 3) ----
 function renderCommunaute(){
   renderAuthUI();
@@ -1117,7 +1223,153 @@ let editPhotoState = null; // null = pas de changement ; {dataUrl} = nouvelle ph
 
 // Select réutilisé partout où on affiche des publications (fil principal + publications d'un profil) :
 // les indices !nom_de_la_contrainte lèvent l'ambiguïté PostgREST entre les différents chemins possibles vers "profiles".
-const FEED_SELECT = "*, profiles!posts_user_id_profiles_fkey(username, avatar_color, avatar_url), likes(user_id), comments(id, body, created_at, user_id, profiles!comments_user_id_fkey(username))";
+const FEED_SELECT = "*, profiles!posts_user_id_profiles_fkey(username, avatar_color, avatar_url), tagged:profiles!posts_tagged_user_id_fkey(id, username), likes(user_id), comments(id, body, created_at, user_id, profiles!comments_user_id_fkey(username)), post_ratings(user_id, rating)";
+
+// Vérifie si l'utilisateur connecté a le droit de taguer/mentionner une personne donnée,
+// selon son réglage "Qui peut te taguer" (tout le monde / mes abonnements / personne).
+// Comme sur Instagram, "mes abonnements" veut dire : seules les personnes QUE LA CIBLE SUIT peuvent la taguer
+// (et non les personnes qui la suivent) — la cible garde le contrôle en choisissant qui elle suit.
+async function canUserTag(targetId, taggingPermission){
+  if (taggingPermission === "nobody") return false;
+  if (taggingPermission !== "following") return true; // "everyone" (ou valeur inconnue) : ouvert par défaut
+  if (!currentUser) return false;
+  try {
+    const { data } = await sb.from("follows").select("status")
+      .eq("follower_id", targetId).eq("followed_id", currentUser.id).eq("status", "accepted").maybeSingle();
+    return !!data;
+  } catch (e) { return false; }
+}
+
+// ---- Mentions @pseudo dans un texte (commentaires, publications) ----
+// On échappe d'abord le HTML, puis on transforme les @pseudo restants en petits liens cliquables.
+const MENTION_REGEX = /@([a-zA-Z0-9_.-]{2,24})/g;
+function renderTextWithMentions(text){
+  return escAttr(text).replace(MENTION_REGEX, (match, username) =>
+    `<span class="mention-link" data-username="${escAttr(username)}">@${escAttr(username)}</span>`);
+}
+function extractMentionedUsernames(text){
+  const found = new Set();
+  let m;
+  MENTION_REGEX.lastIndex = 0;
+  while ((m = MENTION_REGEX.exec(text))) found.add(m[1].toLowerCase());
+  return Array.from(found);
+}
+// Résout les @pseudo d'un texte fraîchement publié en identifiants réels, et notifie les personnes trouvées.
+async function notifyMentions(text, postId){
+  if (!sb || !currentUser) return;
+  const usernames = extractMentionedUsernames(text);
+  if (usernames.length === 0) return;
+  try {
+    // .in() est sensible à la casse : on cherche chaque pseudo mentionné individuellement, insensible à la casse.
+    const results = await Promise.all(usernames.map(u => sb.from("profiles").select("id, username, tagging_permission").ilike("username", u).maybeSingle()));
+    for (const { data } of results) {
+      if (data && await canUserTag(data.id, data.tagging_permission)) createNotification(data.id, "mention", postId);
+    }
+  } catch (e) { console.warn("Notification de mention impossible :", e); }
+}
+// Clique sur un @pseudo n'importe où dans l'appli : cherche le profil correspondant et y navigue.
+async function goToMentionedProfile(username){
+  if (!sb) return;
+  try {
+    const { data } = await sb.from("profiles").select("id, username").ilike("username", username).maybeSingle();
+    if (data) showSecondaryView("profil", data.id);
+  } catch (e) { /* pas grave : on ignore simplement le clic si la recherche échoue */ }
+}
+document.addEventListener("click", (e) => {
+  const mentionEl = e.target.closest(".mention-link");
+  if (mentionEl) goToMentionedProfile(mentionEl.dataset.username);
+});
+
+// ---- Autocomplétion des @pseudo pendant la frappe (commentaires, texte de publication, "Fait avec...") ----
+const MENTIONABLE_SELECTOR = '.feed-comment-form input, #shareComment, #shareTaggedUser, .edit-comment-input, .edit-tagged-input';
+let mentionSuggestBox = null;
+let mentionSuggestTarget = null;
+let mentionSuggestTimer = null;
+
+function getMentionSuggestBox(){
+  if (!mentionSuggestBox) {
+    mentionSuggestBox = document.createElement("div");
+    mentionSuggestBox.className = "mention-suggest-box";
+    mentionSuggestBox.hidden = true;
+    document.body.appendChild(mentionSuggestBox);
+  }
+  return mentionSuggestBox;
+}
+function hideMentionSuggest(){
+  if (mentionSuggestBox) mentionSuggestBox.hidden = true;
+  mentionSuggestTarget = null;
+}
+// Dans les champs "Fait avec..." (taguer quelqu'un), tout le champ est le pseudo — pas besoin de @ ni de position du curseur.
+function currentMentionQuery(el){
+  if (el.id === "shareTaggedUser" || el.classList.contains("edit-tagged-input")) {
+    return el.value.replace(/^@/, "");
+  }
+  const uptoCaret = el.value.slice(0, el.selectionStart);
+  const m = uptoCaret.match(/(?:^|\s)@([a-zA-Z0-9_.-]{1,24})$/);
+  return m ? m[1] : null;
+}
+// Les suggestions ne proposent que les personnes que tu suis (tes "amis") — mais taper le pseudo complet
+// de quelqu'un d'autre fonctionne quand même, cette liste ne fait que filtrer les propositions affichées.
+let friendListCache = null; // {timestamp, list} — évite de re-télécharger la liste à chaque frappe
+async function fetchFriendSuggestions(prefix){
+  if (!sb || !currentUser) return [];
+  try {
+    if (!friendListCache || Date.now() - friendListCache.timestamp > 60000) {
+      const { data } = await sb.from("follows")
+        .select("profiles!follows_followed_id_fkey(id, username, tagging_permission)")
+        .eq("follower_id", currentUser.id).eq("status", "accepted");
+      friendListCache = { timestamp: Date.now(), list: (data || []).map(r => r.profiles).filter(Boolean) };
+    }
+    const lower = prefix.toLowerCase();
+    const candidates = friendListCache.list.filter(p => p.username.toLowerCase().startsWith(lower)).slice(0, 8);
+    // On les suit, mais ça ne veut pas dire qu'ils/elles nous suivent en retour : on revérifie leur réglage individuellement.
+    const checked = await Promise.all(candidates.map(async p => (await canUserTag(p.id, p.tagging_permission)) ? p : null));
+    return checked.filter(Boolean).slice(0, 5);
+  } catch (e) { return []; }
+}
+async function updateMentionSuggest(el){
+  const query = currentMentionQuery(el);
+  if (!query || query.length < 2 || !sb) { hideMentionSuggest(); return; }
+  mentionSuggestTarget = el;
+  try {
+    const matches = await fetchFriendSuggestions(query);
+    if (mentionSuggestTarget !== el) return; // le focus a changé pendant la recherche
+    if (matches.length === 0) { hideMentionSuggest(); return; }
+    const box = getMentionSuggestBox();
+    const rect = el.getBoundingClientRect();
+    box.style.left = `${Math.round(rect.left)}px`;
+    box.style.top = `${Math.round(rect.bottom + 4)}px`;
+    box.style.width = `${Math.round(Math.max(rect.width, 160))}px`;
+    box.innerHTML = matches.map(p => `<button type="button" class="mention-suggest-item" data-username="${escAttr(p.username)}">@${escAttr(p.username)}</button>`).join("");
+    box.hidden = false;
+  } catch (e) { hideMentionSuggest(); }
+}
+document.addEventListener("input", (e) => {
+  if (!e.target.matches(MENTIONABLE_SELECTOR)) return;
+  clearTimeout(mentionSuggestTimer);
+  mentionSuggestTimer = setTimeout(() => updateMentionSuggest(e.target), 200);
+});
+document.addEventListener("click", (e) => {
+  const item = e.target.closest(".mention-suggest-item");
+  if (!item || !mentionSuggestTarget) return;
+  const el = mentionSuggestTarget;
+  const username = item.dataset.username;
+  if (el.id === "shareTaggedUser" || el.classList.contains("edit-tagged-input")) {
+    el.value = username;
+  } else {
+    const caret = el.selectionStart;
+    const before = el.value.slice(0, caret);
+    const after = el.value.slice(caret);
+    const newBefore = before.replace(/@([a-zA-Z0-9_.-]{0,24})$/, `@${username} `);
+    el.value = newBefore + after;
+    el.setSelectionRange(newBefore.length, newBefore.length);
+  }
+  el.focus();
+  hideMentionSuggest();
+});
+document.addEventListener("focusout", (e) => {
+  if (e.target.matches(MENTIONABLE_SELECTOR)) setTimeout(hideMentionSuggest, 150);
+});
 
 // ---- Récupère et rattache les likes de commentaires à une liste de publications déjà chargées ----
 async function attachCommentLikes(posts){
@@ -1220,6 +1472,8 @@ function renderNotificationHTML(n){
   const avatarStyle = avatarUrl ? `background:url('${avatarUrl}') center/cover no-repeat;` : `background:${color};`;
   const text = n.type === "comment" ? `<b>${author}</b> a commenté ta publication.`
     : n.type === "follow" ? `<b>${author}</b> a commencé à te suivre.`
+    : n.type === "mention" ? `<b>${author}</b> t'a mentionné.`
+    : n.type === "tag" ? `<b>${author}</b> t'a tagué dans une recette.`
     : `<b>${author}</b> souhaite te suivre.`;
   const actions = n.type === "follow_request" ? `
     <div class="notif-actions">
@@ -1239,27 +1493,52 @@ function renderNotificationHTML(n){
   `;
 }
 
-let feedMode = "public"; // "public" = tout le monde, "mine" = mes publications + celles de mes abonnements
+let feedMode = "public"; // "public" = tout le monde, "mine" = mes publications + celles de mes abonnements, "decouvrir" = les plus populaires
+
+// ---- Chargement du classement "Découvrir" : calculé côté base de données sur TOUT l'historique
+// (pas juste un lot récent), à partir de la vue post_popularity — vraies notes 5⭐ (moyenne
+// bayésienne pour éviter qu'une seule note écrase les recettes bien établies), likes, commentaires,
+// et nombre de fois qu'une même recette a été cuisinée par des personnes différentes. Ce classement
+// reste donc pertinent et distinct du fil chronologique même avec beaucoup de publications.
+async function fetchDecouvrirPosts(){
+  const { data: ranked, error: rankError } = await sb
+    .from("post_popularity")
+    .select("post_id")
+    .order("popularity_score", { ascending: false })
+    .limit(30);
+  if (rankError) throw rankError;
+  const orderedIds = (ranked || []).map(r => r.post_id);
+  if (orderedIds.length === 0) return [];
+  const { data, error } = await sb.from("posts").select(FEED_SELECT).in("id", orderedIds);
+  if (error) throw error;
+  const byId = new Map((data || []).map(p => [String(p.id), p]));
+  return orderedIds.map(id => byId.get(String(id))).filter(Boolean);
+}
 
 async function loadFeed(attempt = 1){
   const container = document.getElementById("feedContainer");
   if (!container || !sb) return;
   container.innerHTML = `<div class="state-msg"><div class="spinner"></div>Chargement du fil…</div>`;
   try {
-    let query = sb.from("posts").select(FEED_SELECT).order("created_at", { ascending: false }).limit(30);
-    if (feedMode === "mine" && currentUser) {
-      const { data: follows, error: followsError } = await sb
-        .from("follows")
-        .select("followed_id")
-        .eq("follower_id", currentUser.id)
-        .eq("status", "accepted");
-      if (followsError) throw followsError;
-      const ids = [currentUser.id, ...(follows || []).map(f => f.followed_id)];
-      query = query.in("user_id", ids);
+    let posts;
+    if (feedMode === "decouvrir") {
+      posts = await fetchDecouvrirPosts();
+    } else {
+      let query = sb.from("posts").select(FEED_SELECT).order("created_at", { ascending: false }).limit(30);
+      if (feedMode === "mine" && currentUser) {
+        const { data: follows, error: followsError } = await sb
+          .from("follows")
+          .select("followed_id")
+          .eq("follower_id", currentUser.id)
+          .eq("status", "accepted");
+        if (followsError) throw followsError;
+        const ids = [currentUser.id, ...(follows || []).map(f => f.followed_id)];
+        query = query.in("user_id", ids);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      posts = data || [];
     }
-    const { data, error } = await query;
-    if (error) throw error;
-    const posts = data || [];
     await attachCommentLikes(posts);
     editingPostId = null;
     renderFeed(posts);
@@ -1292,7 +1571,7 @@ function renderCommentHTML(c){
   const isOwnComment = currentUser && c.user_id === currentUser.id;
   return `
     <div class="feed-comment-item" data-comment-id="${c.id}">
-      <div class="feed-comment-main"><b>${(c.profiles && c.profiles.username) || "?"}</b> ${c.body}</div>
+      <div class="feed-comment-main"><b>${(c.profiles && c.profiles.username) || "?"}</b> ${renderTextWithMentions(c.body)}</div>
       <div class="feed-comment-actions">
         <button type="button" class="comment-like-btn${cLiked ? " liked" : ""}" data-liked="${cLiked}">${cLiked ? "❤️" : "🤍"} <span class="like-count">${c.comment_likes.length}</span></button>
         ${isOwnComment ? `<button type="button" class="comment-delete-btn" aria-label="Supprimer le commentaire">🗑</button>` : ""}
@@ -1312,13 +1591,17 @@ function renderFeedCardHTML(post){
   const image = post.hide_photo ? null : (post.photo_url || post.recipe_image);
   const date = formatFeedDate(post.created_at);
   const comments = post.comments.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const taggedUsername = post.tagged && post.tagged.username;
+  const ratings = post.post_ratings || [];
+  const ownRating = currentUser ? (ratings.find(r => r.user_id === currentUser.id) || {}).rating || 0 : 0;
+  const ratingAvg = ratings.length ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length : 0;
   return `
     <div class="feed-card" data-post-id="${post.id}">
       <div class="feed-header">
         <div class="feed-author-link" data-user-id="${post.user_id}" style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;">
           <div class="feed-avatar" style="${avatarStyle}">${avatarUrl ? "" : author[0].toUpperCase()}</div>
           <div class="feed-header-info">
-            <div class="feed-author">${author}</div>
+            <div class="feed-author">${author}${taggedUsername ? ` <span class="feed-tagged-link" data-user-id="${post.tagged.id}"> &amp; ${escAttr(taggedUsername)}</span>` : ""}</div>
             <div class="feed-date">${date}</div>
           </div>
         </div>
@@ -1352,7 +1635,8 @@ function renderFeedCardHTML(post){
             </div>`;
           })()}
           <input type="text" class="search-input edit-title-input" placeholder="Titre de ta publication (facultatif)" maxlength="80" value="${(post.post_title || "").replace(/"/g, "&quot;")}">
-          <textarea class="search-input edit-comment-input" placeholder="Un petit mot sur ta recette (facultatif)" style="margin-top:8px;resize:vertical;min-height:60px;">${post.comment || ""}</textarea>
+          <input type="text" class="search-input edit-tagged-input" placeholder="👤 Fait avec... (pseudo, facultatif)" maxlength="24" style="margin-top:8px;" value="${(post.tagged && post.tagged.username) ? escAttr(post.tagged.username) : ""}">
+          <textarea class="search-input edit-comment-input" placeholder="Un petit mot sur ta recette (facultatif — @pseudo pour mentionner quelqu'un)" style="margin-top:8px;resize:vertical;min-height:60px;">${post.comment || ""}</textarea>
           <div class="edit-actions">
             <button type="button" class="primary-btn" data-action="save-edit">Enregistrer</button>
             <button type="button" class="rate-taste-btn" data-action="cancel-edit">Annuler</button>
@@ -1361,11 +1645,17 @@ function renderFeedCardHTML(post){
       ` : `
         <div class="feed-title">${post.post_title || post.recipe_title}</div>
         <div class="feed-recipe-link" data-recipe-id="${post.recipe_id}">🍽 ${post.recipe_title}${post.difficulty ? " · " + (DIFFICULTY_LABELS[post.difficulty] || "") : ""}${post.is_custom_recipe ? ` <span class="badge custom">📝 Ma recette</span>` : ""}</div>
-        ${post.comment ? `<p class="feed-comment-text">${post.comment}</p>` : ""}
+        ${post.comment ? `<p class="feed-comment-text">${renderTextWithMentions(post.comment)}</p>` : ""}
       `}
       <div class="feed-actions">
         <button type="button" class="like-btn${liked ? " liked" : ""}" data-liked="${liked}">${liked ? "❤️" : "🤍"} <span class="like-count">${post.likes.length}</span></button>
         <span class="feed-comment-count" style="color:var(--ink-dim);font-size:13px;">💬 ${comments.length}</span>
+      </div>
+      <div class="feed-rating-row">
+        <div class="star-picker" data-post-id="${post.id}">
+          ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="star-btn${n <= ownRating ? " filled" : ""}" data-star="${n}" aria-label="Noter ${n} étoile${n > 1 ? "s" : ""}">${n <= ownRating ? "⭐" : "☆"}</button>`).join("")}
+        </div>
+        <span class="rating-avg">${ratings.length ? `${ratingAvg.toFixed(1)} ⭐ (${ratings.length})` : "Pas encore noté"}</span>
       </div>
       <div class="feed-comments">
         ${comments.map(renderCommentHTML).join("")}
@@ -1419,6 +1709,9 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
     const recipeLink = e.target.closest(".feed-recipe-link");
     if (recipeLink) { openRecipeDetail(recipeLink.dataset.recipeId, returnTo); return; }
 
+    const taggedLink = e.target.closest(".feed-tagged-link");
+    if (taggedLink) { showSecondaryView("profil", taggedLink.dataset.userId); return; }
+
     const authorLink = e.target.closest(".feed-author-link");
     if (authorLink) { showSecondaryView("profil", authorLink.dataset.userId); return; }
 
@@ -1453,10 +1746,21 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
     if (e.target.closest('[data-action="save-edit"]')) {
       const newTitle = card.querySelector(".edit-title-input").value.trim();
       const newComment = card.querySelector(".edit-comment-input").value.trim();
+      const newTaggedUsername = card.querySelector(".edit-tagged-input").value.trim().replace(/^@/, "");
       const saveBtn = card.querySelector('[data-action="save-edit"]');
       saveBtn.disabled = true;
       try {
-        const updates = { post_title: newTitle || null, comment: newComment || null };
+        const previousTaggedId = post.tagged_user_id || (post.tagged && post.tagged.id) || null;
+        let taggedUserId = null;
+        let tagNotFound = false;
+        let tagNotAllowed = false;
+        if (newTaggedUsername) {
+          const { data: taggedProfile } = await sb.from("profiles").select("id, username, tagging_permission").ilike("username", newTaggedUsername).maybeSingle();
+          if (!taggedProfile) tagNotFound = true;
+          else if (!(await canUserTag(taggedProfile.id, taggedProfile.tagging_permission))) tagNotAllowed = true;
+          else taggedUserId = taggedProfile.id;
+        }
+        const updates = { post_title: newTitle || null, comment: newComment || null, tagged_user_id: taggedUserId };
         if (editPhotoState && editPhotoState.dataUrl) {
           const blob = await (await fetch(editPhotoState.dataUrl)).blob();
           const path = `${currentUser.id}/${Date.now()}.jpg`;
@@ -1470,10 +1774,14 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
         }
         const { error } = await sb.from("posts").update(updates).eq("id", postId);
         if (error) throw error;
-        Object.assign(post, updates);
+        Object.assign(post, updates, { tagged: taggedUserId ? { id: taggedUserId, username: newTaggedUsername } : null });
+        if (taggedUserId && taggedUserId !== previousTaggedId) createNotification(taggedUserId, "tag", postId);
+        if (newComment) notifyMentions(newComment, postId);
         editingPostId = null;
         editPhotoState = null;
         refreshCard(postId);
+        if (tagNotFound) alert("Pseudo tagué introuvable — vérifie l'orthographe. Le reste a bien été enregistré.");
+        else if (tagNotAllowed) alert("Cette personne n'autorise pas les tags — elle n'a pas été ajoutée. Le reste a bien été enregistré.");
       } catch (err) {
         console.warn("Modification de la publication impossible :", err);
         saveBtn.disabled = false;
@@ -1505,6 +1813,28 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
         console.warn("Like impossible :", err);
         post.likes = wasLiked ? [...post.likes, { user_id: currentUser.id }] : post.likes.filter(l => l.user_id !== currentUser.id);
         updateLikeButtonDOM(likeBtn, wasLiked, post.likes.length);
+      }
+      return;
+    }
+
+    const starBtn = e.target.closest(".star-btn");
+    if (starBtn) {
+      if (!currentUser) return;
+      const newRating = Number(starBtn.dataset.star);
+      const previousRatings = post.post_ratings || [];
+      const ownIndex = previousRatings.findIndex(r => r.user_id === currentUser.id);
+      // Optimiste : on met à jour l'affichage tout de suite, on annule si la sauvegarde échoue
+      post.post_ratings = ownIndex === -1
+        ? [...previousRatings, { user_id: currentUser.id, rating: newRating }]
+        : previousRatings.map((r, i) => i === ownIndex ? { ...r, rating: newRating } : r);
+      refreshCard(postId);
+      try {
+        const { error } = await sb.from("post_ratings").upsert({ post_id: postId, user_id: currentUser.id, rating: newRating }, { onConflict: "post_id,user_id" });
+        if (error) throw error;
+      } catch (err) {
+        console.warn("Enregistrement de la note impossible :", err);
+        post.post_ratings = previousRatings;
+        refreshCard(postId);
       }
       return;
     }
@@ -1579,6 +1909,7 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
       input.value = "";
       refreshCard(postId);
       createNotification(post.user_id, "comment", postId);
+      notifyMentions(body, postId);
     } catch (err) {
       console.warn("Commentaire impossible :", err);
     } finally {
@@ -1702,6 +2033,8 @@ function attachAuthHandlers(){
   document.getElementById("signOutBtn").addEventListener("click", async () => {
     if (sb) await sb.auth.signOut();
   });
+
+  document.getElementById("deleteAccountBtn").addEventListener("click", openDeleteAccountStep1);
 
   // ---- Mot de passe oublié ----
   const resetCard = document.getElementById("resetCard");
@@ -2829,8 +3162,9 @@ async function showRecipeDetail(id, returnTo){
   const stepTimers = rawSteps.map(detectTimer);
 
   resultsEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Traduction en cours…</div>`;
-  const [titleT, ...stepTranslations] = await Promise.all([
+  const [titleT, cookCount, ...stepTranslations] = await Promise.all([
     translateLongText(recipe.title, `title_${recipe.id}`),
+    fetchCookCount(recipe.id),
     ...rawSteps.map((s, i) => translateLongText(s, `instr_${recipe.id}_step${i}`))
   ]);
   const translationIncomplete = !titleT.complete || stepTranslations.some(t => !t.complete);
@@ -2841,7 +3175,7 @@ async function showRecipeDetail(id, returnTo){
   let servings = (weekEntry && weekEntry.servings) || BASE_SERVINGS;
 
   resultsEl.innerHTML = `
-    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "mesplats" ? "Retour à mes plats" : currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : "Retour aux résultats"}</button>
+    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "mesplats" ? "Retour à mes plats" : currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : currentRecipeReturnTo === "hashtag" ? "Retour aux publications" : "Retour aux résultats"}</button>
     <div class="recipe-detail">
       <img src="${recipe.image}" alt="">
       <h3>${titleT.text}</h3>
@@ -2849,6 +3183,7 @@ async function showRecipeDetail(id, returnTo){
       <div class="badges" style="margin-bottom:8px;">
         <span class="badge" title="Temps de prépa (actif)">🔪 ~${prepMinutes} min</span>
         <span class="badge" title="Temps total, du début à l'assiette">⏱ ~${totalMinutes} min</span>
+        ${cookCount ? `<span class="badge" title="Nombre de fois cuisinée par la communauté, partagée ou non">🍳 Cuisinée ${cookCount} fois</span>` : ""}
       </div>
       <div class="match ${missing.length === 0 ? 'ok' : ''}" style="margin-bottom:8px;">
         ${missing.length === 0 ? "✅ Tu as tout ce qu'il faut" : `Il te manque : ${missing.map(m => translateIngredient(m.name)).join(", ")}`}
@@ -2894,6 +3229,7 @@ async function showRecipeDetail(id, returnTo){
     else if (currentRecipeReturnTo === "communaute") switchTab("communaute");
     else if (currentRecipeReturnTo === "profil") showSecondaryView("profil", viewingProfileUserId);
     else if (currentRecipeReturnTo === "semaine") showSecondaryView("semaine");
+    else if (currentRecipeReturnTo === "hashtag") showSecondaryView("hashtag", currentHashtag);
     else searchRecipes();
   });
   attachStepAccordion(resultsEl);
@@ -3076,9 +3412,16 @@ function renderSemaine(){
 
 // ---- Publication communautaire (V2 — Phase 2). Uniquement si la personne choisit de partager ; ----
 // ---- rien n'est envoyé à Supabase si la case reste décochée (recette gardée privée). ----
-async function publishToCommunity(recipe, difficulty, photoChoice, postTitle, comment){
+async function publishToCommunity(recipe, difficulty, photoChoice, postTitle, comment, taggedUsername){
   if (!sb || !currentUser) return false;
   try {
+    let taggedUserId = null;
+    let taggedNotAllowed = false;
+    if (taggedUsername) {
+      const { data: taggedProfile } = await sb.from("profiles").select("id, tagging_permission").ilike("username", taggedUsername).maybeSingle();
+      if (taggedProfile && !(await canUserTag(taggedProfile.id, taggedProfile.tagging_permission))) taggedNotAllowed = true;
+      else taggedUserId = taggedProfile ? taggedProfile.id : null;
+    }
     // Filet de sécurité : s'assure que la recette perso est bien dans la table partagée avant de la publier
     // (utile pour d'anciennes recettes créées avant l'ajout de cette synchronisation).
     if (recipe.isCustom) await syncCustomRecipeToCloud(recipe);
@@ -3094,7 +3437,7 @@ async function publishToCommunity(recipe, difficulty, photoChoice, postTitle, co
       hidePhoto = true;
     }
     // mode "recipe" (ou absence de choix) : photoUrl reste null, l'affichage retombera sur la photo de la recette.
-    const { error } = await sb.from("posts").insert({
+    const { data: newPost, error } = await sb.from("posts").insert({
       user_id: currentUser.id,
       recipe_id: String(recipe.id),
       recipe_title: recipe.titleFr || recipe.title,
@@ -3104,10 +3447,14 @@ async function publishToCommunity(recipe, difficulty, photoChoice, postTitle, co
       post_title: postTitle || null,
       comment: comment || null,
       difficulty: difficulty || null,
-      is_custom_recipe: !!recipe.isCustom
-    });
+      is_custom_recipe: !!recipe.isCustom,
+      tagged_user_id: taggedUserId
+    }).select("id").single();
     if (error) throw error;
-    return true;
+    if (taggedUserId) createNotification(taggedUserId, "tag", newPost.id);
+    if (comment) notifyMentions(comment, newPost.id);
+    if (taggedNotAllowed) return "tag_not_allowed";
+    return taggedUsername && !taggedUserId ? "tag_not_found" : true;
   } catch (e) {
     console.warn("Publication communautaire impossible :", e);
     return false;
@@ -3161,10 +3508,28 @@ async function resizePhoto(file, maxWidth){
   });
 }
 
+// ---- Nombre de fois qu'une recette a été cuisinée (compteur anonyme, cf. increment_cook_count) ----
+async function fetchCookCount(recipeId){
+  if (!sb) return null;
+  try {
+    const { data, error } = await sb.from("recipe_cook_counts").select("cook_count").eq("recipe_id", String(recipeId)).maybeSingle();
+    if (error) throw error;
+    return data ? data.cook_count : 0;
+  } catch (e) {
+    console.warn("Lecture du compteur de cuisson impossible :", e);
+    return null;
+  }
+}
+
 // ---- Après avoir cuisiné : note la difficulté, puis demande quels ingrédients sont épuisés ----
 function attachDoneFlow(recipe){
   const resultsEl = document.getElementById("results");
   document.getElementById("doneBtn").addEventListener("click", () => {
+    // Compteur anonyme "recette cuisinée" : envoyé même si la recette n'est jamais partagée ensuite.
+    // Aucune donnée personnelle transmise, juste +1 sur le total de cette recette (voir increment_cook_count).
+    if (sb && currentUser) sb.rpc("increment_cook_count", { p_recipe_id: String(recipe.id) }).then(({ error }) => {
+      if (error) console.warn("Comptage anonyme de cuisson impossible :", error);
+    });
     const usedFromSelection = Array.from(selected).filter(v =>
       recipe.ingredients.some(({ name }) => ingredientNamesMatch(name, v))
     );
@@ -3204,7 +3569,8 @@ function attachDoneFlow(recipe){
           </label>
         </div>
         <input type="text" id="shareTitle" class="search-input" placeholder="Titre de ta publication (facultatif)" maxlength="80" style="margin-top:10px;" hidden>
-        <textarea id="shareComment" class="search-input" placeholder="Un petit mot sur ta recette (facultatif)" style="margin-top:10px;resize:vertical;min-height:60px;" hidden></textarea>
+        <input type="text" id="shareTaggedUser" class="search-input" placeholder="👤 Fait avec... (pseudo, facultatif)" maxlength="24" style="margin-top:10px;" hidden>
+        <textarea id="shareComment" class="search-input" placeholder="Un petit mot sur ta recette (facultatif — @pseudo pour mentionner quelqu'un)" style="margin-top:10px;resize:vertical;min-height:60px;" hidden></textarea>
         <div id="sharePhotoBlock" style="margin-top:12px;" hidden>
           <p class="hint" style="margin:0 0 8px;">Photo de la publication</p>
           <div id="sharePhotoPreviewWrap" class="photo-preview-wrap" hidden><img id="sharePhotoPreview" alt=""></div>
@@ -3245,6 +3611,7 @@ function attachDoneFlow(recipe){
     if (shareToggle) {
       shareToggle.addEventListener("change", () => {
         document.getElementById("shareTitle").hidden = !shareToggle.checked;
+        document.getElementById("shareTaggedUser").hidden = !shareToggle.checked;
         document.getElementById("shareComment").hidden = !shareToggle.checked;
         document.getElementById("sharePhotoBlock").hidden = !shareToggle.checked;
         if (shareToggle.checked) {
@@ -3318,7 +3685,8 @@ function attachDoneFlow(recipe){
       e.target.textContent = "Publication…";
       const postTitle = document.getElementById("shareTitle").value.trim();
       const comment = document.getElementById("shareComment").value.trim();
-      const ok = await publishToCommunity(recipe, difficulty, sharePhoto, postTitle, comment);
+      const taggedUsername = document.getElementById("shareTaggedUser").value.trim().replace(/^@/, "");
+      const ok = await publishToCommunity(recipe, difficulty, sharePhoto, postTitle, comment, taggedUsername || null);
       finishRecipe(Array.from(toRemove), ok);
     });
   });
@@ -3342,6 +3710,8 @@ function finishRecipe(usedUpValues, shareResult){
   scheduleCloudSync();
   let shareMsg = "";
   if (shareResult === true) shareMsg = "<br>🎉 Partagée avec la communauté !";
+  else if (shareResult === "tag_not_found") shareMsg = "<br>🎉 Partagée avec la communauté !<br>⚠️ Le pseudo tagué n'a pas été trouvé, vérifie l'orthographe.";
+  else if (shareResult === "tag_not_allowed") shareMsg = "<br>🎉 Partagée avec la communauté !<br>⚠️ Cette personne n'autorise pas les tags, elle n'a pas été ajoutée.";
   else if (shareResult === false) shareMsg = "<br>⚠️ Le partage n'a pas fonctionné, réessaie plus tard depuis Mes plats.";
   document.getElementById("results").innerHTML = `<div class="state-msg">Recette marquée comme faite ✅${usedUpValues.length > 0 ? "<br>Ta liste d'ingrédients a été mise à jour." : ""}${shareMsg}</div>`;
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -3764,6 +4134,7 @@ async function showCustomRecipeDetail(id, returnTo){
   }
   recipe.titleFr = recipe.title; // compatibilité avec attachDoneFlow/publishToCommunity
   recipe.isCustom = true;
+  const cookCount = await fetchCookCount(recipe.id);
 
   const missing = recipe.ingredients.filter(({ name }) => {
     const n = normalize(name);
@@ -3773,13 +4144,14 @@ async function showCustomRecipeDetail(id, returnTo){
   let servings = BASE_SERVINGS;
 
   resultsEl.innerHTML = `
-    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : "Retour à mes plats"}</button>
+    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : currentRecipeReturnTo === "hashtag" ? "Retour aux publications" : "Retour à mes plats"}</button>
     <div class="recipe-detail">
       ${recipe.image ? `<img src="${recipe.image}" alt="">` : ""}
       <h3>${recipe.title}${authorName ? ` <button type="button" class="recipe-author-link" id="recipeAuthorLink" data-author-id="${authorId}">créé par ${escAttr(authorName)}</button>` : ""}</h3>
       <div class="badges" style="margin-bottom:8px;">
         <span class="badge custom">📝 Ma recette</span>
         ${recipe.difficulty ? `<span class="badge">${DIFFICULTY_LABELS[recipe.difficulty]}</span>` : ""}
+        ${cookCount ? `<span class="badge" title="Nombre de fois cuisinée par la communauté, partagée ou non">🍳 Cuisinée ${cookCount} fois</span>` : ""}
       </div>
       ${(recipe.prepMinutes || recipe.totalMinutes) ? `
       <div class="badges" style="margin-bottom:8px;">
@@ -3828,6 +4200,7 @@ async function showCustomRecipeDetail(id, returnTo){
     if (currentRecipeReturnTo === "communaute") switchTab("communaute");
     else if (currentRecipeReturnTo === "profil") showSecondaryView("profil", viewingProfileUserId);
     else if (currentRecipeReturnTo === "semaine") showSecondaryView("semaine");
+    else if (currentRecipeReturnTo === "hashtag") showSecondaryView("hashtag", currentHashtag);
     else switchTab("mesplats");
   });
   const authorLinkEl = document.getElementById("recipeAuthorLink");
@@ -3940,6 +4313,77 @@ function renderShoppingList(){
 
 // ---- Menu ☰ (liste de courses, paramètres) ----
 let lastMainTab = "communaute";
+// ---- Suppression définitive du compte (Paramètres → tout en bas, sous "Se déconnecter") ----
+const DELETE_CONFIRM_PHRASE = "je supprime mon compte";
+function closeDeleteAccountModal(){
+  document.getElementById("deleteAccountOverlay").hidden = true;
+}
+function openDeleteAccountStep1(){
+  const card = document.getElementById("deleteAccountCard");
+  card.innerHTML = `
+    <h3>Supprimer ton compte ?</h3>
+    <p>Toutes tes données seront définitivement effacées : profil, publications, commentaires, abonnements, recettes personnelles.</p>
+    <div class="modal-actions">
+      <button type="button" class="rate-taste-btn" id="deleteStep1Cancel">Annuler</button>
+      <button type="button" class="danger-btn-solid" id="deleteStep1Confirm">Oui, supprimer</button>
+    </div>
+  `;
+  document.getElementById("deleteAccountOverlay").hidden = false;
+  document.getElementById("deleteStep1Cancel").addEventListener("click", closeDeleteAccountModal);
+  document.getElementById("deleteStep1Confirm").addEventListener("click", openDeleteAccountStep2);
+}
+function openDeleteAccountStep2(){
+  const card = document.getElementById("deleteAccountCard");
+  card.innerHTML = `
+    <h3>⚠️ Cette action est irréversible</h3>
+    <p>Pour confirmer, écris exactement : <b>${DELETE_CONFIRM_PHRASE}</b></p>
+    <input type="text" id="deleteConfirmInput" class="search-input" placeholder="${DELETE_CONFIRM_PHRASE}" autocomplete="off">
+    <p id="deleteAccountError" class="hint" style="display:none;color:var(--danger);margin-top:-8px;"></p>
+    <div class="modal-actions">
+      <button type="button" class="rate-taste-btn" id="deleteStep2Cancel">Annuler</button>
+      <button type="button" class="danger-btn-solid" id="deleteStep2Confirm" disabled>Valider</button>
+    </div>
+  `;
+  const input = document.getElementById("deleteConfirmInput");
+  const confirmBtn = document.getElementById("deleteStep2Confirm");
+  input.addEventListener("input", () => {
+    confirmBtn.disabled = input.value.trim().toLowerCase() !== DELETE_CONFIRM_PHRASE;
+  });
+  document.getElementById("deleteStep2Cancel").addEventListener("click", closeDeleteAccountModal);
+  confirmBtn.addEventListener("click", performAccountDeletion);
+}
+async function performAccountDeletion(){
+  const card = document.getElementById("deleteAccountCard");
+  const confirmBtn = document.getElementById("deleteStep2Confirm");
+  const errorEl = document.getElementById("deleteAccountError");
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = "Suppression…";
+  try {
+    const { data, error } = await sb.functions.invoke("delete-account");
+    if (error || (data && data.error)) throw error || new Error(data.error);
+    card.innerHTML = `<h3>Compte supprimé</h3><p>À bientôt peut-être 👋</p>`;
+    // Nettoie les données locales de cet appareil (le compte n'existe plus côté serveur).
+    ["foodme_custom_recipes"].forEach(k => localStorage.removeItem(k));
+    saveExpiryDates({}); saveCookedDishes([]); saveShoppingList([]); saveWeekRecipes([]);
+    selected.clear();
+    setTimeout(async () => {
+      closeDeleteAccountModal();
+      try { if (sb) await sb.auth.signOut(); } catch (e) { /* le compte n'existe déjà plus, pas grave */ }
+      // Filet de sécurité : force le retour à l'écran de connexion même si signOut() a échoué
+      // (normal si le compte vient d'être supprimé côté serveur).
+      currentUser = null;
+      currentProfile = null;
+      renderAuthUI();
+    }, 1200);
+  } catch (e) {
+    console.warn("Suppression du compte impossible :", e);
+    errorEl.textContent = "La suppression a échoué. Réessaie dans un instant.";
+    errorEl.style.display = "block";
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = "Valider";
+  }
+}
+
 function renderParametres(){
   document.getElementById("antiWasteToggle").checked = loadSettings().antiWaste;
   const statsEl = document.getElementById("wasteStats");
@@ -3950,6 +4394,7 @@ function renderParametres(){
   const profilBlock = document.getElementById("parametresProfil");
   profilBlock.hidden = !currentUser;
   document.getElementById("signOutBtn").hidden = !currentUser;
+  document.getElementById("deleteAccountBtn").hidden = !currentUser;
   if (currentUser) {
     const username = (currentProfile && currentProfile.username) || currentUser.email.split("@")[0];
     const color = (currentProfile && currentProfile.avatar_color) || "#D8472B";
@@ -3958,6 +4403,8 @@ function renderParametres(){
     document.getElementById("profileEmailSettings").textContent = currentUser.email;
     document.getElementById("usernameInput").value = username;
     document.getElementById("privateAccountToggle").checked = !!(currentProfile && currentProfile.is_private);
+    const taggingPerm = (currentProfile && currentProfile.tagging_permission) || "everyone";
+    document.querySelectorAll("#taggingPermissionPicker button").forEach(b => b.classList.toggle("selected", b.dataset.value === taggingPerm));
   }
 }
 document.getElementById("antiWasteToggle").addEventListener("change", (e) => {
@@ -3977,6 +4424,22 @@ document.getElementById("privateAccountToggle").addEventListener("change", async
     console.warn("Changement de confidentialité impossible :", err);
     e.target.checked = !isPrivate;
   }
+});
+document.querySelectorAll("#taggingPermissionPicker button").forEach(btn => {
+  btn.addEventListener("click", async () => {
+    if (!sb || !currentUser) return;
+    const previous = (currentProfile && currentProfile.tagging_permission) || "everyone";
+    const value = btn.dataset.value;
+    document.querySelectorAll("#taggingPermissionPicker button").forEach(b => b.classList.toggle("selected", b === btn));
+    try {
+      const { error } = await sb.from("profiles").update({ tagging_permission: value }).eq("id", currentUser.id);
+      if (error) throw error;
+      currentProfile = Object.assign({}, currentProfile, { tagging_permission: value });
+    } catch (err) {
+      console.warn("Changement du réglage de tag impossible :", err);
+      document.querySelectorAll("#taggingPermissionPicker button").forEach(b => b.classList.toggle("selected", b.dataset.value === previous));
+    }
+  });
 });
 // ---- Écran maintenu allumé pendant la consultation de la liste de courses (pratique au supermarché) ----
 let wakeLock = null;
@@ -4003,6 +4466,7 @@ function showSecondaryView(id, param){
     if (id === "parametres") renderParametres();
     else if (id === "profil") renderProfilView(param);
     else if (id === "semaine") renderSemaine();
+    else if (id === "hashtag") renderHashtagView(param);
   }
 }
 document.getElementById("menuBtn").addEventListener("click", (e) => {
@@ -4028,10 +4492,42 @@ document.getElementById("feedModeToggle").addEventListener("click", (e) => {
 });
 let profileSearchTimer = null;
 document.getElementById("profileSearchInput").addEventListener("input", (e) => {
-  const q = e.target.value.trim();
+  const raw = e.target.value.trim();
   clearTimeout(profileSearchTimer);
   const resultsEl = document.getElementById("profileSearchResults");
-  if (!q) { resultsEl.hidden = true; resultsEl.innerHTML = ""; return; }
+  if (!raw) { resultsEl.hidden = true; resultsEl.innerHTML = ""; return; }
+
+  // Un # en tête bascule sur la recherche de hashtags — mécanisme distinct de la recherche de profils
+  if (raw.startsWith("#")) {
+    const q = raw.slice(1).trim().toLowerCase();
+    if (!q) { resultsEl.hidden = true; resultsEl.innerHTML = ""; return; }
+    profileSearchTimer = setTimeout(async () => {
+      if (!sb) return;
+      try {
+        const { data, error } = await sb
+          .from("hashtag_counts")
+          .select("hashtag, post_count")
+          .ilike("hashtag", `${q}%`)
+          .order("post_count", { ascending: false })
+          .limit(10);
+        if (error) throw error;
+        const results = data || [];
+        if (results.length === 0) {
+          resultsEl.innerHTML = `<div class="profile-search-item" style="cursor:default;color:var(--ink-dim);">Aucun hashtag trouvé</div>`;
+        } else {
+          resultsEl.innerHTML = results.map(h => `
+            <div class="profile-search-item" data-hashtag="${h.hashtag}">
+              <span>#${h.hashtag}</span>
+              <span style="color:var(--ink-dim);margin-left:auto;">(${h.post_count})</span>
+            </div>`).join("");
+        }
+        resultsEl.hidden = false;
+      } catch (err) { console.warn("Recherche de hashtag impossible :", err); }
+    }, 300);
+    return;
+  }
+
+  const q = raw;
   profileSearchTimer = setTimeout(async () => {
     if (!sb) return;
     try {
@@ -4060,6 +4556,13 @@ document.getElementById("profileSearchInput").addEventListener("input", (e) => {
   }, 300);
 });
 document.getElementById("profileSearchResults").addEventListener("click", (e) => {
+  const hashtagItem = e.target.closest(".profile-search-item[data-hashtag]");
+  if (hashtagItem) {
+    document.getElementById("profileSearchInput").value = "";
+    document.getElementById("profileSearchResults").hidden = true;
+    showSecondaryView("hashtag", hashtagItem.dataset.hashtag);
+    return;
+  }
   const item = e.target.closest(".profile-search-item[data-user-id]");
   if (!item) return;
   document.getElementById("profileSearchInput").value = "";
@@ -4129,6 +4632,7 @@ updateFridgeSummary();
 attachAuthHandlers();
 initFeedInteractions(document.getElementById("feedContainer"), "communaute", renderFeed);
 initFeedInteractions(document.getElementById("profilePostsFeed"), "profil", renderProfileFeed);
+initFeedInteractions(document.getElementById("hashtagPostsFeed"), "hashtag", renderHashtagFeed);
 initAuth();
 
 // ---- Détection d'une nouvelle version en ligne (utile surtout pour l'icône ajoutée à l'écran d'accueil,
@@ -4137,6 +4641,7 @@ initAuth();
 let pendingUpdateTag = null;
 function setUpdateAvailable(available){
   document.getElementById("menuUpdateDot").hidden = !available;
+  document.getElementById("menuItemUpdateDot").hidden = !available;
   document.getElementById("updateStatusText").textContent = available
     ? "Une nouvelle version est disponible." : "Tu as la dernière version.";
   document.getElementById("checkUpdateBtn").textContent = available ? "Actualiser" : "Vérifier";
