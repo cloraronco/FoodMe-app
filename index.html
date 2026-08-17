@@ -587,12 +587,23 @@
   .feed-comment-text{font-size:13.5px;line-height:1.5;margin:6px 0;white-space:pre-wrap;}
   .feed-actions{display:flex;gap:16px;margin-top:10px;align-items:center;}
   .like-btn{background:none;border:none;font-size:14px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;gap:5px;}
-  .feed-rating-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
-  .star-picker{display:flex;}
-  .star-btn{background:none;border:none;font-size:16px;line-height:1;cursor:pointer;padding:2px;color:var(--ink-dim);}
-  .star-btn.filled{color:inherit;}
-  .rating-avg{font-size:12.5px;color:var(--ink-dim);}
   .like-btn.liked{color:var(--tomato);}
+  .save-btn{background:none;border:none;font-size:16px;cursor:pointer;color:var(--ink-dim);margin-left:auto;opacity:.4;filter:grayscale(1);}
+  .save-btn.saved{opacity:1;filter:none;}
+  .detail-save-btn{font-size:22px;flex-shrink:0;margin-left:8px;padding:2px;}
+  .bilan-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;}
+  .bilan-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .bilan-card-num{display:block;font-family:var(--font-display);font-weight:600;font-size:26px;color:var(--ink);line-height:1.1;}
+  .bilan-card-label{display:block;color:var(--ink-dim);font-size:12.5px;margin-top:4px;}
+  .bilan-highlight{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:10px;}
+  .bilan-highlight-title{font-size:12.5px;color:var(--ink-dim);margin-bottom:4px;}
+  .bilan-highlight-name{font-family:var(--font-display);font-weight:600;font-size:16px;color:var(--ink);}
+  .bilan-waste{margin-top:10px;padding:12px 14px;background:var(--basil-tint);border:1px solid var(--basil);border-radius:12px;font-size:13.5px;color:var(--ink);}
+  .saved-folder{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden;}
+  .saved-folder-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;font-weight:600;font-size:14px;background:var(--surface);}
+  .saved-folder-body{border-top:1px solid var(--line);padding:10px;background:var(--bg);}
+  .save-folder-list{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow-y:auto;}
+  .save-folder-item{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;cursor:pointer;text-align:left;color:var(--ink);}
   .feed-comments{margin-top:10px;border-top:1px solid var(--line);padding-top:10px;}
   .feed-comment-item{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:13px;margin-bottom:6px;line-height:1.4;}
   .feed-comment-main{flex:1;min-width:0;}
@@ -649,6 +660,8 @@
   <div id="menuPanel" class="menu-panel" hidden>
     <button type="button" class="menu-item" data-action="profil">👤 Profil</button>
     <button type="button" class="menu-item" data-action="semaine">📅 Ma semaine <span id="menuWeekCount" class="menu-count"></span></button>
+    <button type="button" class="menu-item" data-action="enregistrees">🔖 Recettes enregistrées <span id="menuSavedCount" class="menu-count"></span></button>
+    <button type="button" class="menu-item" data-action="bilan">📊 Bilan</button>
     <button type="button" class="menu-item" data-action="liste">🛒 Liste de courses <span id="menuListCount" class="menu-count"></span></button>
     <button type="button" class="menu-item" data-action="parametres">⚙️ Paramètres<span id="menuItemUpdateDot" class="menu-dot-inline" hidden></span></button>
   </div>
@@ -839,6 +852,29 @@
   <div class="profile-posts-section" id="hashtagPostsFeed"></div>
 </main>
 
+<main id="view-enregistrees" class="view" hidden>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+    <h2 style="margin:0;">🔖 Recettes enregistrées</h2>
+    <button type="button" id="newFolderFromScreenBtn" class="rate-taste-btn" style="width:auto;padding:8px 14px;white-space:nowrap;">+ Dossier</button>
+  </div>
+  <div id="enregistreesContent" style="margin-top:14px;"></div>
+</main>
+
+<main id="view-bilan" class="view" hidden>
+  <h2 style="margin:0 0 14px;">📊 Bilan</h2>
+  <div class="feed-mode-toggle" id="bilanPeriodTabs">
+    <button type="button" class="feed-mode-btn selected" data-period="semaine">Cette semaine</button>
+    <button type="button" class="feed-mode-btn" data-period="mois">Ce mois-ci</button>
+    <button type="button" class="feed-mode-btn" data-period="annee">Cette année</button>
+    <button type="button" class="feed-mode-btn" data-period="an_dernier">L'an dernier</button>
+  </div>
+  <div id="bilanContent"></div>
+</main>
+
+<div id="saveRecipeOverlay" class="modal-overlay" hidden>
+  <div class="modal-card" id="saveRecipeCard"></div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script>
 // ---- Connexion Supabase (V2 — réseau social). Le frigo/liste de courses restent en local, ----
@@ -944,6 +980,8 @@ async function pullFromCloudAndMerge(){
       saveShoppingList(data.shopping_list || []);
       saveWeekRecipes(data.week_recipes || []);
       saveCustomRecipes(data.custom_recipes || []);
+      saveSavedFolders(data.saved_folders || []);
+      saveSavedRecipes(data.saved_recipes || []);
       // Filet de sécurité : garantit que les recettes perso de cet appareil sont bien dans la table
       // partagée (utile pour les recettes créées avant l'ajout de cette synchronisation).
       (data.custom_recipes || []).forEach(syncCustomRecipeToCloud);
@@ -980,6 +1018,8 @@ async function pushToCloud(){
       shopping_list: loadShoppingList(),
       week_recipes: loadWeekRecipes(),
       custom_recipes: loadCustomRecipes(),
+      saved_folders: loadSavedFolders(),
+      saved_recipes: loadSavedRecipes(),
       updated_at: new Date().toISOString()
     });
   } catch (e) { console.warn("Sauvegarde cloud impossible pour le moment :", e); }
@@ -1223,7 +1263,7 @@ let editPhotoState = null; // null = pas de changement ; {dataUrl} = nouvelle ph
 
 // Select réutilisé partout où on affiche des publications (fil principal + publications d'un profil) :
 // les indices !nom_de_la_contrainte lèvent l'ambiguïté PostgREST entre les différents chemins possibles vers "profiles".
-const FEED_SELECT = "*, profiles!posts_user_id_profiles_fkey(username, avatar_color, avatar_url), tagged:profiles!posts_tagged_user_id_fkey(id, username), likes(user_id), comments(id, body, created_at, user_id, profiles!comments_user_id_fkey(username)), post_ratings(user_id, rating)";
+const FEED_SELECT = "*, profiles!posts_user_id_profiles_fkey(username, avatar_color, avatar_url), tagged:profiles!posts_tagged_user_id_fkey(id, username), likes(user_id), comments(id, body, created_at, user_id, profiles!comments_user_id_fkey(username))";
 
 // Vérifie si l'utilisateur connecté a le droit de taguer/mentionner une personne donnée,
 // selon son réglage "Qui peut te taguer" (tout le monde / mes abonnements / personne).
@@ -1496,8 +1536,7 @@ function renderNotificationHTML(n){
 let feedMode = "public"; // "public" = tout le monde, "mine" = mes publications + celles de mes abonnements, "decouvrir" = les plus populaires
 
 // ---- Chargement du classement "Découvrir" : calculé côté base de données sur TOUT l'historique
-// (pas juste un lot récent), à partir de la vue post_popularity — vraies notes 5⭐ (moyenne
-// bayésienne pour éviter qu'une seule note écrase les recettes bien établies), likes, commentaires,
+// (pas juste un lot récent), à partir de la vue post_popularity — likes, commentaires,
 // et nombre de fois qu'une même recette a été cuisinée par des personnes différentes. Ce classement
 // reste donc pertinent et distinct du fil chronologique même avec beaucoup de publications.
 async function fetchDecouvrirPosts(){
@@ -1592,9 +1631,7 @@ function renderFeedCardHTML(post){
   const date = formatFeedDate(post.created_at);
   const comments = post.comments.slice().sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
   const taggedUsername = post.tagged && post.tagged.username;
-  const ratings = post.post_ratings || [];
-  const ownRating = currentUser ? (ratings.find(r => r.user_id === currentUser.id) || {}).rating || 0 : 0;
-  const ratingAvg = ratings.length ? ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length : 0;
+  const isSaved = isRecipeSaved(post.recipe_id);
   return `
     <div class="feed-card" data-post-id="${post.id}">
       <div class="feed-header">
@@ -1650,12 +1687,7 @@ function renderFeedCardHTML(post){
       <div class="feed-actions">
         <button type="button" class="like-btn${liked ? " liked" : ""}" data-liked="${liked}">${liked ? "❤️" : "🤍"} <span class="like-count">${post.likes.length}</span></button>
         <span class="feed-comment-count" style="color:var(--ink-dim);font-size:13px;">💬 ${comments.length}</span>
-      </div>
-      <div class="feed-rating-row">
-        <div class="star-picker" data-post-id="${post.id}">
-          ${[1, 2, 3, 4, 5].map(n => `<button type="button" class="star-btn${n <= ownRating ? " filled" : ""}" data-star="${n}" aria-label="Noter ${n} étoile${n > 1 ? "s" : ""}">${n <= ownRating ? "⭐" : "☆"}</button>`).join("")}
-        </div>
-        <span class="rating-avg">${ratings.length ? `${ratingAvg.toFixed(1)} ⭐ (${ratings.length})` : "Pas encore noté"}</span>
+        <button type="button" class="save-btn${isSaved ? " saved" : ""}" data-saved="${isSaved}" data-recipe-id="${post.recipe_id}" aria-label="Enregistrer la recette">🔖</button>
       </div>
       <div class="feed-comments">
         ${comments.map(renderCommentHTML).join("")}
@@ -1817,25 +1849,10 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
       return;
     }
 
-    const starBtn = e.target.closest(".star-btn");
-    if (starBtn) {
+    const saveBtn = e.target.closest(".save-btn");
+    if (saveBtn) {
       if (!currentUser) return;
-      const newRating = Number(starBtn.dataset.star);
-      const previousRatings = post.post_ratings || [];
-      const ownIndex = previousRatings.findIndex(r => r.user_id === currentUser.id);
-      // Optimiste : on met à jour l'affichage tout de suite, on annule si la sauvegarde échoue
-      post.post_ratings = ownIndex === -1
-        ? [...previousRatings, { user_id: currentUser.id, rating: newRating }]
-        : previousRatings.map((r, i) => i === ownIndex ? { ...r, rating: newRating } : r);
-      refreshCard(postId);
-      try {
-        const { error } = await sb.from("post_ratings").upsert({ post_id: postId, user_id: currentUser.id, rating: newRating }, { onConflict: "post_id,user_id" });
-        if (error) throw error;
-      } catch (err) {
-        console.warn("Enregistrement de la note impossible :", err);
-        post.post_ratings = previousRatings;
-        refreshCard(postId);
-      }
+      openSaveRecipeModal(post.recipe_id, post.recipe_title, post.hide_photo ? null : (post.photo_url || post.recipe_image), post.difficulty);
       return;
     }
 
@@ -2843,7 +2860,8 @@ function toInternalRecipe(meal){
 // ---- Tri et filtres des résultats de recherche ----
 let lastSearchResults = [];
 let currentRecipeReturnTo = "cuisiner";
-let cuisinerSort = "faisabilite";
+// Tri par défaut : "Périssable en priorité" si l'anti-gaspillage est activé (n'a de sens que dans ce cas), sinon "Faisabilité".
+let cuisinerSort = loadSettings().antiWaste ? "perissable" : "faisabilite";
 let dietFilter = "tous";
 let areaFilter = "toutes";
 let expiringOnly = false;
@@ -3173,12 +3191,16 @@ async function showRecipeDetail(id, returnTo){
   const { prepMinutes, totalMinutes } = estimateTimes(recipe.instructions, recipe.ingredients.length);
   const weekEntry = returnTo === "semaine" ? loadWeekRecipes().find(w => String(w.id) === String(id)) : null;
   let servings = (weekEntry && weekEntry.servings) || BASE_SERVINGS;
+  const isSaved = isRecipeSaved(recipe.id);
 
   resultsEl.innerHTML = `
-    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "mesplats" ? "Retour à mes plats" : currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : currentRecipeReturnTo === "hashtag" ? "Retour aux publications" : "Retour aux résultats"}</button>
+    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "mesplats" ? "Retour à mes plats" : currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : currentRecipeReturnTo === "hashtag" ? "Retour aux publications" : currentRecipeReturnTo === "enregistrees" ? "Retour aux recettes enregistrées" : "Retour aux résultats"}</button>
     <div class="recipe-detail">
       <img src="${recipe.image}" alt="">
-      <h3>${titleT.text}</h3>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <h3 style="margin:0;">${titleT.text}</h3>
+        <button type="button" class="save-btn detail-save-btn${isSaved ? " saved" : ""}" id="detailSaveBtn" data-saved="${isSaved}" data-recipe-id="${recipe.id}" aria-label="Enregistrer la recette">🔖</button>
+      </div>
       <div class="meta">${recipe.area}${recipe.category ? " · " + recipe.category : ""}</div>
       <div class="badges" style="margin-bottom:8px;">
         <span class="badge" title="Temps de prépa (actif)">🔪 ~${prepMinutes} min</span>
@@ -3230,6 +3252,7 @@ async function showRecipeDetail(id, returnTo){
     else if (currentRecipeReturnTo === "profil") showSecondaryView("profil", viewingProfileUserId);
     else if (currentRecipeReturnTo === "semaine") showSecondaryView("semaine");
     else if (currentRecipeReturnTo === "hashtag") showSecondaryView("hashtag", currentHashtag);
+    else if (currentRecipeReturnTo === "enregistrees") showSecondaryView("enregistrees");
     else searchRecipes();
   });
   attachStepAccordion(resultsEl);
@@ -3257,6 +3280,10 @@ async function showRecipeDetail(id, returnTo){
     const added = toggleWeekRecipe(recipe.id, titleT.text, recipe.image, servings);
     weekAddDetailBtn.classList.toggle("added", added);
     weekAddDetailBtn.textContent = added ? "✅ Dans ma semaine (retirer)" : "📅 Ajouter à ma semaine";
+  });
+  document.getElementById("detailSaveBtn").addEventListener("click", () => {
+    if (!currentUser) return;
+    openSaveRecipeModal(recipe.id, titleT.text, recipe.image, null);
   });
 }
 
@@ -3410,6 +3437,215 @@ function renderSemaine(){
   });
 }
 
+// ---- Recettes enregistrées (menu ☰) : dossiers façon Instagram, bouton 🔖 sur chaque publication ----
+function loadSavedFolders(){
+  try { return JSON.parse(localStorage.getItem("foodme_saved_folders") || "[]"); }
+  catch(e) { return []; }
+}
+function saveSavedFolders(list){
+  localStorage.setItem("foodme_saved_folders", JSON.stringify(list));
+  scheduleCloudSync();
+}
+function loadSavedRecipes(){
+  try { return JSON.parse(localStorage.getItem("foodme_saved_recipes") || "[]"); }
+  catch(e) { return []; }
+}
+function saveSavedRecipes(list){
+  localStorage.setItem("foodme_saved_recipes", JSON.stringify(list));
+  updateSavedMenuBadge();
+  scheduleCloudSync();
+}
+function updateSavedMenuBadge(){
+  const el = document.getElementById("menuSavedCount");
+  if (!el) return;
+  const n = loadSavedRecipes().length;
+  el.textContent = n > 0 ? `(${n})` : "";
+}
+function isRecipeSaved(recipeId){
+  return loadSavedRecipes().some(r => String(r.id) === String(recipeId));
+}
+function saveRecipeToFolder(recipeId, title, image, difficulty, folderId){
+  const list = loadSavedRecipes();
+  const idx = list.findIndex(r => String(r.id) === String(recipeId));
+  const entry = { id: recipeId, title, image: image || null, difficulty: difficulty || null, folderId: folderId || null, savedAt: new Date().toISOString() };
+  if (idx >= 0) list[idx] = entry; else list.push(entry);
+  saveSavedRecipes(list);
+}
+function unsaveRecipe(recipeId){
+  saveSavedRecipes(loadSavedRecipes().filter(r => String(r.id) !== String(recipeId)));
+}
+function createSavedFolder(name){
+  const folder = { id: "f_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7), name };
+  saveSavedFolders([...loadSavedFolders(), folder]);
+  return folder;
+}
+// Supprime le dossier mais garde ses recettes (elles retombent en "non classées") — évite toute perte accidentelle.
+function deleteSavedFolder(folderId){
+  saveSavedFolders(loadSavedFolders().filter(f => f.id !== folderId));
+  saveSavedRecipes(loadSavedRecipes().map(r => r.folderId === folderId ? { ...r, folderId: null } : r));
+}
+function refreshSaveButtons(recipeId, saved){
+  document.querySelectorAll(`.save-btn[data-recipe-id="${recipeId}"]`).forEach(btn => {
+    btn.classList.toggle("saved", saved);
+    btn.dataset.saved = saved;
+  });
+}
+
+// ---- Fenêtre "Enregistrer" (🔖 sur une publication, ou "+ Dossier" depuis l'écran Recettes enregistrées) ----
+let saveRecipeTarget = null; // { id, title, image, difficulty } — null si on crée juste un dossier depuis l'écran
+function openSaveRecipeModal(recipeId, title, image, difficulty){
+  saveRecipeTarget = { id: recipeId, title, image, difficulty };
+  renderSaveRecipeModal();
+  document.getElementById("saveRecipeOverlay").hidden = false;
+}
+function openNewFolderModal(){
+  saveRecipeTarget = null;
+  renderNewFolderStep();
+  document.getElementById("saveRecipeOverlay").hidden = false;
+}
+function closeSaveRecipeModal(){
+  document.getElementById("saveRecipeOverlay").hidden = true;
+  saveRecipeTarget = null;
+}
+function renderSaveRecipeModal(){
+  const card = document.getElementById("saveRecipeCard");
+  const folders = loadSavedFolders();
+  const already = isRecipeSaved(saveRecipeTarget.id);
+  card.innerHTML = `
+    <h3>🔖 Recettes enregistrées</h3>
+    ${already
+      ? `<button type="button" class="danger-btn-solid" id="unsaveBtn" style="margin-top:0;">🗑 Retirer des recettes enregistrées</button>`
+      : `<button type="button" class="primary-btn" id="quickSaveBtn" style="width:100%;">🔖 Enregistrer</button>`}
+    ${folders.length ? `<p class="hint" style="margin:14px 0 8px;">Ou ajoute à un dossier :</p>
+    <div class="save-folder-list">
+      ${folders.map(f => `<button type="button" class="save-folder-item" data-folder-id="${f.id}">📁 ${escAttr(f.name)}</button>`).join("")}
+    </div>` : ""}
+    <button type="button" class="rate-taste-btn" id="newFolderBtn" style="width:100%;margin-top:12px;">+ Nouveau dossier</button>
+    <div class="modal-actions" style="margin-top:14px;">
+      <button type="button" class="rate-taste-btn" id="saveModalCancel" style="flex:1;">Fermer</button>
+    </div>
+  `;
+  document.getElementById("saveModalCancel").addEventListener("click", closeSaveRecipeModal);
+  document.getElementById("newFolderBtn").addEventListener("click", renderNewFolderStep);
+  if (already) {
+    document.getElementById("unsaveBtn").addEventListener("click", () => {
+      unsaveRecipe(saveRecipeTarget.id);
+      refreshSaveButtons(saveRecipeTarget.id, false);
+      closeSaveRecipeModal();
+    });
+  } else {
+    document.getElementById("quickSaveBtn").addEventListener("click", () => {
+      const { id, title, image, difficulty } = saveRecipeTarget;
+      saveRecipeToFolder(id, title, image, difficulty, null);
+      refreshSaveButtons(id, true);
+      closeSaveRecipeModal();
+    });
+  }
+  card.querySelectorAll(".save-folder-item").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const { id, title, image, difficulty } = saveRecipeTarget;
+      saveRecipeToFolder(id, title, image, difficulty, btn.dataset.folderId);
+      refreshSaveButtons(id, true);
+      closeSaveRecipeModal();
+    });
+  });
+}
+function renderNewFolderStep(){
+  const card = document.getElementById("saveRecipeCard");
+  card.innerHTML = `
+    <h3>Nouveau dossier</h3>
+    <input type="text" id="newFolderNameInput" class="search-input" placeholder="Nom du dossier" maxlength="30" autocomplete="off">
+    <div class="modal-actions">
+      <button type="button" class="rate-taste-btn" id="newFolderCancel">Annuler</button>
+      <button type="button" class="primary-btn" id="newFolderConfirm">Créer</button>
+    </div>
+  `;
+  document.getElementById("newFolderCancel").addEventListener("click", () => {
+    if (saveRecipeTarget) renderSaveRecipeModal(); else closeSaveRecipeModal();
+  });
+  const input = document.getElementById("newFolderNameInput");
+  input.focus();
+  document.getElementById("newFolderConfirm").addEventListener("click", () => {
+    const name = input.value.trim();
+    if (!name) return;
+    const folder = createSavedFolder(name);
+    if (saveRecipeTarget) {
+      const { id, title, image, difficulty } = saveRecipeTarget;
+      saveRecipeToFolder(id, title, image, difficulty, folder.id);
+      refreshSaveButtons(id, true);
+    }
+    closeSaveRecipeModal();
+    const screen = document.getElementById("view-enregistrees");
+    if (screen && !screen.hidden) renderEnregistrees();
+  });
+}
+
+// ---- Écran "Recettes enregistrées" (menu ☰) : dossiers dépliables + recettes non classées ----
+let expandedSavedFolder = null;
+function renderEnregistrees(){
+  const folders = loadSavedFolders();
+  const recipes = loadSavedRecipes();
+  const container = document.getElementById("enregistreesContent");
+  if (folders.length === 0 && recipes.length === 0) {
+    container.innerHTML = `<div class="state-msg">Aucune recette enregistrée pour l'instant.<br>Appuie sur 🔖 sur une publication pour l'enregistrer ici.</div>`;
+    return;
+  }
+  const renderRecipeRow = (r) => `
+    <div class="week-recipe-item" data-id="${r.id}">
+      <img src="${r.image || ""}" alt="">
+      <div class="info"><h4 data-action="view-saved-recipe">${r.title}</h4></div>
+      <button type="button" class="week-remove-btn" data-action="remove-saved-recipe" aria-label="Retirer">🗑</button>
+    </div>`;
+  const unclassified = recipes.filter(r => !r.folderId);
+  container.innerHTML = `
+    ${folders.map(f => {
+      const inFolder = recipes.filter(r => r.folderId === f.id);
+      const open = expandedSavedFolder === f.id;
+      return `
+      <div class="saved-folder" data-folder-id="${f.id}">
+        <div class="saved-folder-header" data-action="toggle-folder">
+          <span>📁 ${escAttr(f.name)} <span class="menu-count">(${inFolder.length})</span></span>
+          <button type="button" class="week-remove-btn" data-action="delete-folder" aria-label="Supprimer le dossier">🗑</button>
+        </div>
+        ${open ? `<div class="saved-folder-body">${inFolder.length ? inFolder.map(renderRecipeRow).join("") : `<p class="hint" style="margin:0;">Aucune recette dans ce dossier.</p>`}</div>` : ""}
+      </div>`;
+    }).join("")}
+    ${unclassified.map(renderRecipeRow).join("")}
+  `;
+  container.querySelectorAll('[data-action="toggle-folder"]').forEach(el => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest('[data-action="delete-folder"]')) return;
+      const id = el.closest(".saved-folder").dataset.folderId;
+      expandedSavedFolder = expandedSavedFolder === id ? null : id;
+      renderEnregistrees();
+    });
+  });
+  container.querySelectorAll('[data-action="delete-folder"]').forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const id = btn.closest(".saved-folder").dataset.folderId;
+      if (!confirm("Supprimer ce dossier ? Les recettes qu'il contient resteront dans tes recettes enregistrées.")) return;
+      deleteSavedFolder(id);
+      if (expandedSavedFolder === id) expandedSavedFolder = null;
+      renderEnregistrees();
+    });
+  });
+  container.querySelectorAll('[data-action="view-saved-recipe"]').forEach(el => {
+    el.addEventListener("click", () => {
+      const id = el.closest(".week-recipe-item").dataset.id;
+      openRecipeDetail(id, "enregistrees");
+    });
+  });
+  container.querySelectorAll('[data-action="remove-saved-recipe"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.closest(".week-recipe-item").dataset.id;
+      unsaveRecipe(id);
+      refreshSaveButtons(id, false);
+      renderEnregistrees();
+    });
+  });
+}
+
 // ---- Publication communautaire (V2 — Phase 2). Uniquement si la personne choisit de partager ; ----
 // ---- rien n'est envoyé à Supabase si la case reste décochée (recette gardée privée). ----
 async function publishToCommunity(recipe, difficulty, photoChoice, postTitle, comment, taggedUsername){
@@ -3470,6 +3706,114 @@ function addCookedDish(recipe, difficulty, photo){
   });
   saveCookedDishes(list);
 }
+
+// ---- Bilan (statistiques personnelles) ----
+// Calcule les bornes [start, end[ de la période choisie, et la période précédente équivalente
+// (même longueur de temps écoulée, pour une comparaison honnête même en milieu de semaine/mois/année).
+let bilanPeriod = "semaine";
+function getBilanPeriodRange(period){
+  const now = new Date();
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const todayStart = startOfDay(now);
+  const end = new Date(); // maintenant
+  let start, prevStart, prevEnd, label;
+  if (period === "semaine") {
+    const dow = (now.getDay() + 6) % 7; // lundi = 0
+    start = new Date(todayStart); start.setDate(start.getDate() - dow);
+    prevEnd = new Date(start);
+    prevStart = new Date(start); prevStart.setDate(prevStart.getDate() - 7);
+    label = "cette semaine";
+  } else if (period === "mois") {
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+    prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    prevEnd = new Date(prevStart); prevEnd.setDate(prevEnd.getDate() + (todayStart - start) / 86400000);
+    label = "ce mois-ci";
+  } else if (period === "annee") {
+    start = new Date(now.getFullYear(), 0, 1);
+    prevStart = new Date(now.getFullYear() - 1, 0, 1);
+    prevEnd = new Date(prevStart); prevEnd.setDate(prevEnd.getDate() + (todayStart - start) / 86400000);
+    label = "cette année";
+  } else { // an_dernier : année civile complète précédente, comparée à l'année civile complète d'avant
+    start = new Date(now.getFullYear() - 1, 0, 1);
+    const realEnd = new Date(now.getFullYear(), 0, 1);
+    prevStart = new Date(now.getFullYear() - 2, 0, 1);
+    prevEnd = new Date(now.getFullYear() - 1, 0, 1);
+    return { start, end: realEnd, prevStart, prevEnd, label: "l'année dernière" };
+  }
+  return { start, end, prevStart, prevEnd, label };
+}
+function computeBilanStats(start, end){
+  const dishes = loadCookedDishes().filter(d => {
+    const t = new Date(d.date);
+    return t >= start && t < end;
+  });
+  const recipeCounts = new Map();
+  const activeDays = new Set();
+  dishes.forEach(d => {
+    recipeCounts.set(d.recipeId, (recipeCounts.get(d.recipeId) || { count: 0, title: d.title }));
+    recipeCounts.get(d.recipeId).count++;
+    recipeCounts.get(d.recipeId).title = d.title;
+    activeDays.add(new Date(d.date).toDateString());
+  });
+  let topRecipe = null;
+  recipeCounts.forEach((v, k) => {
+    if (!topRecipe || v.count > topRecipe.count) topRecipe = { title: v.title, count: v.count };
+  });
+  const recipesCreated = loadCustomRecipes().filter(r => {
+    if (!r.createdAt) return false;
+    const t = new Date(r.createdAt);
+    return t >= start && t < end;
+  }).length;
+  return {
+    totalCooked: dishes.length,
+    distinctRecipes: recipeCounts.size,
+    activeDays: activeDays.size,
+    topRecipe,
+    recipesCreated
+  };
+}
+function renderBilan(){
+  const { start, end, label } = getBilanPeriodRange(bilanPeriod);
+  const stats = computeBilanStats(start, end);
+  const wasteCount = getWasteSavedCount();
+  const container = document.getElementById("bilanContent");
+  container.innerHTML = `
+    <div class="bilan-grid">
+      <div class="bilan-card">
+        <span class="bilan-card-num">${stats.totalCooked}</span>
+        <span class="bilan-card-label">plat${stats.totalCooked > 1 ? "s" : ""} cuisiné${stats.totalCooked > 1 ? "s" : ""}</span>
+      </div>
+      <div class="bilan-card">
+        <span class="bilan-card-num">${stats.distinctRecipes}</span>
+        <span class="bilan-card-label">recette${stats.distinctRecipes > 1 ? "s" : ""} différente${stats.distinctRecipes > 1 ? "s" : ""}</span>
+      </div>
+      <div class="bilan-card">
+        <span class="bilan-card-num">${stats.recipesCreated}</span>
+        <span class="bilan-card-label">recette${stats.recipesCreated > 1 ? "s" : ""} créée${stats.recipesCreated > 1 ? "s" : ""}</span>
+      </div>
+      <div class="bilan-card">
+        <span class="bilan-card-num">${stats.activeDays}</span>
+        <span class="bilan-card-label">jour${stats.activeDays > 1 ? "s" : ""} actif${stats.activeDays > 1 ? "s" : ""}</span>
+      </div>
+    </div>
+    ${stats.topRecipe ? `
+    <div class="bilan-highlight">
+      <div class="bilan-highlight-title">🏆 Recette phare ${label}</div>
+      <div class="bilan-highlight-name">${stats.topRecipe.title} — ${stats.topRecipe.count} fois</div>
+    </div>` : `
+    <div class="bilan-highlight">
+      <div class="bilan-highlight-title">Aucun plat cuisiné ${label} pour l'instant.</div>
+    </div>`}
+    ${wasteCount > 0 ? `<div class="bilan-waste">🎉 ${wasteCount} ingrédient${wasteCount > 1 ? "s" : ""} sauvé${wasteCount > 1 ? "s" : ""} du gaspillage depuis le début</div>` : ""}
+  `;
+}
+document.getElementById("bilanPeriodTabs").addEventListener("click", (e) => {
+  const btn = e.target.closest(".feed-mode-btn");
+  if (!btn || btn.classList.contains("selected")) return;
+  document.querySelectorAll("#bilanPeriodTabs .feed-mode-btn").forEach(b => b.classList.toggle("selected", b === btn));
+  bilanPeriod = btn.dataset.period;
+  renderBilan();
+});
 
 // ---- Redimensionne une photo choisie/prise par l'utilisateur avant stockage (évite de saturer le localStorage) ----
 function drawToCanvas(source, sourceWidth, sourceHeight, maxWidth){
@@ -4142,12 +4486,16 @@ async function showCustomRecipeDetail(id, returnTo){
   });
 
   let servings = BASE_SERVINGS;
+  const isSaved = isRecipeSaved(recipe.id);
 
   resultsEl.innerHTML = `
-    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : currentRecipeReturnTo === "hashtag" ? "Retour aux publications" : "Retour à mes plats"}</button>
+    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : currentRecipeReturnTo === "hashtag" ? "Retour aux publications" : currentRecipeReturnTo === "enregistrees" ? "Retour aux recettes enregistrées" : "Retour à mes plats"}</button>
     <div class="recipe-detail">
       ${recipe.image ? `<img src="${recipe.image}" alt="">` : ""}
-      <h3>${recipe.title}${authorName ? ` <button type="button" class="recipe-author-link" id="recipeAuthorLink" data-author-id="${authorId}">créé par ${escAttr(authorName)}</button>` : ""}</h3>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <h3 style="margin:0;">${recipe.title}${authorName ? ` <button type="button" class="recipe-author-link" id="recipeAuthorLink" data-author-id="${authorId}">créé par ${escAttr(authorName)}</button>` : ""}</h3>
+        <button type="button" class="save-btn detail-save-btn${isSaved ? " saved" : ""}" id="detailSaveBtn" data-saved="${isSaved}" data-recipe-id="${recipe.id}" aria-label="Enregistrer la recette">🔖</button>
+      </div>
       <div class="badges" style="margin-bottom:8px;">
         <span class="badge custom">📝 Ma recette</span>
         ${recipe.difficulty ? `<span class="badge">${DIFFICULTY_LABELS[recipe.difficulty]}</span>` : ""}
@@ -4201,6 +4549,7 @@ async function showCustomRecipeDetail(id, returnTo){
     else if (currentRecipeReturnTo === "profil") showSecondaryView("profil", viewingProfileUserId);
     else if (currentRecipeReturnTo === "semaine") showSecondaryView("semaine");
     else if (currentRecipeReturnTo === "hashtag") showSecondaryView("hashtag", currentHashtag);
+    else if (currentRecipeReturnTo === "enregistrees") showSecondaryView("enregistrees");
     else switchTab("mesplats");
   });
   const authorLinkEl = document.getElementById("recipeAuthorLink");
@@ -4230,6 +4579,10 @@ async function showCustomRecipeDetail(id, returnTo){
     const added = toggleWeekRecipe(recipe.id, recipe.title, recipe.image, servings);
     weekAddDetailBtn.classList.toggle("added", added);
     weekAddDetailBtn.textContent = added ? "✅ Dans ma semaine (retirer)" : "📅 Ajouter à ma semaine";
+  });
+  document.getElementById("detailSaveBtn").addEventListener("click", () => {
+    if (!currentUser) return;
+    openSaveRecipeModal(recipe.id, recipe.title, recipe.image, recipe.difficulty || null);
   });
 }
 
@@ -4412,6 +4765,11 @@ document.getElementById("antiWasteToggle").addEventListener("change", (e) => {
   s.antiWaste = e.target.checked;
   saveSettings(s);
   updateFridgeSummary();
+  // Le tri "Périssable en priorité" ne fait sens qu'avec l'anti-gaspillage actif : on le pose comme
+  // nouveau tri par défaut à l'activation, et on repasse sur "Faisabilité" à la désactivation.
+  cuisinerSort = e.target.checked ? "perissable" : "faisabilite";
+  const cuisinerView = document.getElementById("view-cuisiner");
+  if (cuisinerView && !cuisinerView.hidden) renderRecipeResults();
 });
 document.getElementById("privateAccountToggle").addEventListener("change", async (e) => {
   if (!sb || !currentUser) return;
@@ -4467,6 +4825,8 @@ function showSecondaryView(id, param){
     else if (id === "profil") renderProfilView(param);
     else if (id === "semaine") renderSemaine();
     else if (id === "hashtag") renderHashtagView(param);
+    else if (id === "enregistrees") renderEnregistrees();
+    else if (id === "bilan") renderBilan();
   }
 }
 document.getElementById("menuBtn").addEventListener("click", (e) => {
@@ -4603,6 +4963,8 @@ function switchTab(tab){
 document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
 updateMenuBadge();
 updateWeekMenuBadge();
+updateSavedMenuBadge();
+document.getElementById("newFolderFromScreenBtn").addEventListener("click", openNewFolderModal);
 
 function toggleFridgeAdd(){
   const catEl = document.getElementById("categories");
