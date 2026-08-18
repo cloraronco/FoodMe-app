@@ -98,6 +98,11 @@
     background:var(--surface);border:1px solid var(--line);color:var(--ink);
     font-size:17px;cursor:pointer;flex-shrink:0;
   }
+  .header-login-btn{
+    height:38px;padding:0 14px;border-radius:10px;flex-shrink:0;
+    background:var(--surface);border:1px solid var(--line);color:var(--ink-dim);
+    font-family:var(--font-body);font-weight:600;font-size:13px;cursor:pointer;
+  }
   .header-avatar-btn{
     width:38px;height:38px;border-radius:50%;flex-shrink:0;cursor:pointer;
     border:1.5px solid var(--surface);box-shadow:0 0 0 1.5px var(--line);
@@ -609,6 +614,21 @@
     animation:splashLetterIn .5s cubic-bezier(.2,.8,.2,1) forwards;
   }
   #appSplash .splash-letter.is-space{width:.2em;}
+  .changelog-entry{
+    background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow);
+  }
+  .changelog-entry .changelog-date{font-size:12px;color:var(--ink-dim);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
+  .changelog-entry h4{margin:4px 0 10px;font-family:var(--font-display);font-weight:680;font-size:17px;color:var(--ink);}
+  .changelog-entry ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;}
+  .changelog-entry li{font-size:13.5px;color:var(--ink);line-height:1.45;}
+  .notif-changelog-item{
+    display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;cursor:pointer;
+    background:var(--surface-2);margin-bottom:6px;
+  }
+  .notif-changelog-item .icon{font-size:22px;flex-shrink:0;}
+  .notif-changelog-item .text b{display:block;font-size:13.5px;color:var(--ink);}
+  .notif-changelog-item .text span{font-size:12.5px;color:var(--ink-dim);}
   .auth-form{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
   .primary-btn{
     padding:13px;border:none;border-radius:12px;background:var(--tomato);color:#fff;
@@ -793,7 +813,8 @@
     <div style="display:flex;align-items:center;gap:8px;">
       <button type="button" id="headerAvatarBtn" class="header-avatar-btn" aria-label="Mon profil" hidden></button>
       <button type="button" id="notifBtn" class="menu-btn" aria-label="Notifications" hidden>🔔<span id="notifBadge" class="menu-badge" hidden></span></button>
-      <button id="menuBtn" class="menu-btn" aria-label="Menu">☰<span id="menuUpdateDot" class="menu-dot" hidden></span></button>
+      <button type="button" id="headerLoginBtn" class="header-login-btn" hidden>Se connecter</button>
+      <button id="menuBtn" class="menu-btn" aria-label="Menu">☰</button>
     </div>
   </div>
   <nav id="tabbar">
@@ -809,7 +830,7 @@
     <button type="button" class="menu-item" data-action="bilan">📊 Bilan</button>
     <button type="button" class="menu-item" data-action="liste">🛒 Liste de courses <span id="menuListCount" class="menu-count"></span></button>
     <button type="button" class="menu-item" data-action="premium">⭐ Premium</button>
-    <button type="button" class="menu-item" data-action="parametres">⚙️ Paramètres<span id="menuItemUpdateDot" class="menu-dot-inline" hidden></span></button>
+    <button type="button" class="menu-item" data-action="parametres">⚙️ Paramètres</button>
   </div>
   <div id="notifPanel" class="notif-panel" hidden>
     <h2>Notifications</h2>
@@ -1040,6 +1061,12 @@
   <div class="profile-posts-section" id="hashtagPostsFeed"></div>
 </main>
 
+<main id="view-nouveautes" class="view" hidden>
+  <button type="button" class="back-btn secondary-back-btn">← Retour</button>
+  <h2 style="margin:0 0 14px;">🎉 Nouveautés</h2>
+  <div id="nouveautesContent"></div>
+</main>
+
 <main id="view-decouvrirapp" class="view" hidden>
   <div class="discover-hero">
     <h2>Bienvenue sur FoodMe 🍽️</h2>
@@ -1172,7 +1199,9 @@ function hideSplash(){
 setTimeout(hideSplash, 3000); // filet de sécurité si la connexion au serveur est lente ou en échec
 
 async function initAuth(){
-  if (!sb) { renderAuthUI(); hideSplash(); return; }
+  // Première expérience, sans compte : on ouvre directement sur "Bienvenue sur FoodMe" plutôt que sur
+  // le formulaire de connexion, pour présenter l'application avant de demander à se connecter.
+  if (!sb) { renderAuthUI(); if (!currentUser) showDiscoverScreen(); hideSplash(); return; }
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (session) await loadProfile(session.user);
@@ -1186,6 +1215,7 @@ async function initAuth(){
     else { currentUser = null; currentProfile = null; renderAuthUI(); }
   });
   renderAuthUI();
+  if (!currentUser) showDiscoverScreen();
   hideSplash();
 }
 
@@ -1310,15 +1340,20 @@ function applyAvatarToEl(el, username, color, avatarUrl){
 // ---- Navigation grisée pour les visiteurs non connectés (menu ☰ + onglets sauf Communauté) ----
 function updateAuthGatedNav(){
   const disabled = !currentUser;
+  // Sans compte, le bouton menu ☰ laisse la place à un accès direct "Se connecter" (plus rapide) ;
+  // il redevient le menu normal dès que le compte est connecté.
   const menuBtnEl = document.getElementById("menuBtn");
-  if (menuBtnEl) menuBtnEl.classList.toggle("nav-disabled", disabled);
+  const headerLoginBtnEl = document.getElementById("headerLoginBtn");
+  if (menuBtnEl) menuBtnEl.hidden = disabled;
+  if (headerLoginBtnEl) headerLoginBtnEl.hidden = !disabled;
   document.querySelectorAll(".tab-btn").forEach(b => {
     if (b.dataset.tab === "communaute") return;
     b.classList.toggle("nav-disabled", disabled);
   });
 }
 
-// ---- Écran "Découvrir l'application", affiché à la place d'une action bloquée pour les visiteurs non connectés ----
+// ---- Écran "Découvrir l'application", affiché à la place d'une action bloquée pour les visiteurs non connectés,
+// et par défaut au tout premier chargement tant qu'aucun compte n'est connecté (première expérience) ----
 function showDiscoverScreen(){
   document.getElementById("menuPanel").hidden = true;
   document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== "view-decouvrirapp");
@@ -1343,12 +1378,21 @@ async function updateNotifBadge(){
   if (!btn) return;
   if (!currentUser || !sb) { btn.hidden = true; return; }
   btn.hidden = false;
+  const changelogPending = hasPendingChangelogNotice() ? 1 : 0;
   try {
     const { count } = await sb.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", currentUser.id).eq("read", false);
+    const total = (count || 0) + changelogPending;
     const badge = document.getElementById("notifBadge");
-    badge.hidden = !count;
-    badge.textContent = count > 9 ? "9+" : count;
-  } catch (e) { /* pas grave, le badge attendra la prochaine mise à jour */ }
+    badge.hidden = !total;
+    badge.textContent = total > 9 ? "9+" : total;
+  } catch (e) {
+    // Même si le comptage des notifications sociales échoue, on ne veut pas cacher l'avis de mise à jour.
+    if (changelogPending) {
+      const badge = document.getElementById("notifBadge");
+      badge.hidden = false;
+      badge.textContent = "1";
+    }
+  }
 }
 
 // ---- Photo de profil en haut à droite du header : accès direct à "Profil" en un tap, visible une fois connecté ----
@@ -1714,10 +1758,18 @@ async function createNotification(userId, type, postId){
   } catch (e) { console.warn("Notification impossible à créer :", e); }
 }
 
+function changelogNoticeHTML(){
+  const latest = APP_CHANGELOG[0];
+  return `<div class="notif-changelog-item" id="changelogNoticeItem">
+    <span class="icon">🎉</span>
+    <div class="text"><b>Nouvelle mise à jour</b><span>${latest.title}</span></div>
+  </div>`;
+}
 async function loadNotifications(){
   const listEl = document.getElementById("notificationsList");
   listEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Chargement…</div>`;
   if (!sb || !currentUser) return;
+  const changelogPending = hasPendingChangelogNotice();
   try {
     const { data, error } = await sb
       .from("notifications")
@@ -1727,11 +1779,13 @@ async function loadNotifications(){
       .limit(50);
     if (error) throw error;
     const notifs = data || [];
-    if (notifs.length === 0) {
+    if (notifs.length === 0 && !changelogPending) {
       listEl.innerHTML = `<div class="state-msg">Aucune notification pour l'instant.</div>`;
       return;
     }
-    listEl.innerHTML = notifs.map(renderNotificationHTML).join("");
+    listEl.innerHTML = (changelogPending ? changelogNoticeHTML() : "") + notifs.map(renderNotificationHTML).join("");
+    const changelogItem = document.getElementById("changelogNoticeItem");
+    if (changelogItem) changelogItem.addEventListener("click", () => showSecondaryView("nouveautes"));
     listEl.querySelectorAll(".notif-item").forEach(el => {
       el.addEventListener("click", (e) => {
         if (e.target.closest("button")) return;
@@ -1782,7 +1836,12 @@ async function loadNotifications(){
     }
   } catch (e) {
     console.warn("Chargement des notifications impossible :", e);
-    listEl.innerHTML = `<div class="state-msg">Impossible de charger les notifications.</div>`;
+    // L'avis de mise à jour ne dépend pas des notifications sociales : il reste visible même si leur chargement échoue.
+    listEl.innerHTML = changelogPending
+      ? changelogNoticeHTML()
+      : `<div class="state-msg">Impossible de charger les notifications.</div>`;
+    const changelogItem = document.getElementById("changelogNoticeItem");
+    if (changelogItem) changelogItem.addEventListener("click", () => showSecondaryView("nouveautes"));
   }
 }
 
@@ -5666,6 +5725,7 @@ function showSecondaryView(id, param){
     else if (id === "hashtag") renderHashtagView(param);
     else if (id === "enregistrees") renderEnregistrees();
     else if (id === "bilan") renderBilan();
+    else if (id === "nouveautes") { renderNouveautes(); markChangelogSeen(); updateNotifBadge(); }
   }
 }
 document.getElementById("menuBtn").addEventListener("click", (e) => {
@@ -5829,6 +5889,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click
   switchTab(btn.dataset.tab);
 }));
 document.getElementById("discoverCtaBtn").addEventListener("click", () => switchTab("communaute"));
+document.getElementById("headerLoginBtn").addEventListener("click", () => switchTab("communaute"));
 updateMenuBadge();
 updateWeekMenuBadge();
 updateSavedMenuBadge();
@@ -5867,11 +5928,9 @@ initAuth();
 
 // ---- Détection d'une nouvelle version en ligne (utile surtout pour l'icône ajoutée à l'écran d'accueil,
 // qui ne se recharge pas toute seule comme un onglet de navigateur classique) ----
-// Discret : un petit point sur le bouton ☰, le détail se trouve dans Paramètres → Mises à jour.
+// Le détail se trouve dans Paramètres → Mises à jour (bouton "Actualiser").
 let pendingUpdateTag = null;
 function setUpdateAvailable(available){
-  document.getElementById("menuUpdateDot").hidden = !available;
-  document.getElementById("menuItemUpdateDot").hidden = !available;
   document.getElementById("updateStatusText").textContent = available
     ? "Une nouvelle version est disponible." : "Tu as la dernière version.";
   document.getElementById("checkUpdateBtn").textContent = available ? "Actualiser" : "Vérifier";
@@ -5892,6 +5951,46 @@ document.getElementById("checkUpdateBtn").addEventListener("click", () => {
 });
 setTimeout(checkForUpdate, 1500);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdate(); });
+
+// ---- Nouveautés : journal des mises à jour, embarqué dans l'appli (indépendant de Claude / GitHub) ----
+// À chaque livraison notable, ajouter une entrée en tête de tableau (la plus récente en premier).
+const APP_CHANGELOG = [
+  {
+    version: "2026.08.18",
+    date: "18 août 2026",
+    title: "Filtre Pâtisserie, navigation repensée et écran de démarrage",
+    items: [
+      "Nouveau filtre « Pâtisserie » dans Cuisiner, pour suivre les créateurs de pâtisserie de la communauté.",
+      "Navigation adaptée pour les visiteurs non connectés, avec un nouvel écran de présentation de l'application.",
+      "Nouvel écran de démarrage animé au lancement de l'application.",
+      "Fiches recettes plus fiables dans Cuisiner : elles ne s'affichent plus comme introuvables à tort.",
+      "Correction d'un clignotement visible juste après l'écran de démarrage."
+    ]
+  }
+];
+const LATEST_CHANGELOG_VERSION = APP_CHANGELOG[0].version;
+
+// true tant que la dernière mise à jour du tableau ci-dessus n'a pas été consultée sur cet appareil.
+function hasPendingChangelogNotice(){
+  const seen = localStorage.getItem("foodme_last_seen_changelog_version");
+  if (!seen) { // première visite sur cet appareil : rien à annoncer rétroactivement
+    localStorage.setItem("foodme_last_seen_changelog_version", LATEST_CHANGELOG_VERSION);
+    return false;
+  }
+  return seen !== LATEST_CHANGELOG_VERSION;
+}
+function markChangelogSeen(){
+  localStorage.setItem("foodme_last_seen_changelog_version", LATEST_CHANGELOG_VERSION);
+}
+function renderNouveautes(){
+  document.getElementById("nouveautesContent").innerHTML = APP_CHANGELOG.map(entry => `
+    <div class="changelog-entry">
+      <div class="changelog-date">${entry.date}</div>
+      <h4>${entry.title}</h4>
+      <ul>${entry.items.map(i => `<li>${i}</li>`).join("")}</ul>
+    </div>
+  `).join("");
+}
 </script>
 </body>
 </html>
