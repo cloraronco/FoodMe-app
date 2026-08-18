@@ -435,6 +435,9 @@
     display:flex;align-items:center;justify-content:center;font-family:var(--font-body);
   }
   .tab-btn.active{color:var(--tomato-dark);border-top-color:var(--tomato);}
+  .nav-disabled{opacity:.4;}
+  .nav-disabled.active{color:var(--ink-dim);border-top-color:transparent;}
+  #menuBtn.nav-disabled{opacity:.4;}
   .cook-count-badge{
     display:inline-flex;align-items:center;justify-content:center;
     min-width:16px;height:16px;padding:0 4px;margin-left:6px;vertical-align:middle;
@@ -568,6 +571,33 @@
   }
   .search-input::placeholder{color:var(--ink-dim);}
   .auth-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px;}
+  .discover-hero{
+    background:linear-gradient(155deg,var(--tomato) 0%,var(--tomato-dark) 100%);
+    color:#fff;border-radius:18px;padding:28px 22px;margin:14px 0 20px;box-shadow:var(--shadow);
+  }
+  .discover-hero h2{font-family:var(--font-display);font-weight:680;font-size:24px;margin:0 0 8px;color:#fff;}
+  .discover-hero p{margin:0;font-size:14.5px;line-height:1.5;color:rgba(255,255,255,.92);}
+  .discover-feature{
+    display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);
+    border-radius:14px;padding:14px 16px;margin-bottom:10px;
+  }
+  .discover-feature .icon{font-size:24px;line-height:1;flex-shrink:0;}
+  .discover-feature h4{margin:0 0 3px;font-size:14.5px;font-weight:700;color:var(--ink);}
+  .discover-feature p{margin:0;font-size:13px;color:var(--ink-dim);line-height:1.4;}
+  .discover-cta{
+    width:100%;padding:15px;margin:22px 0 8px;border-radius:12px;border:none;
+    background:var(--tomato);color:#fff;font-family:var(--font-body);font-weight:700;font-size:15px;cursor:pointer;
+  }
+  #appSplash{
+    position:fixed;inset:0;z-index:999;background:var(--bg);
+    display:flex;align-items:center;justify-content:center;gap:14px;
+    transition:opacity .35s ease;
+  }
+  #appSplash.splash-fade-out{opacity:0;pointer-events:none;}
+  #appSplash .splash-icon{font-size:52px;line-height:1;}
+  #appSplash .splash-title{
+    font-family:var(--font-display);font-weight:680;font-size:44px;letter-spacing:-.01em;color:var(--ink);
+  }
   .auth-form{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
   .primary-btn{
     padding:13px;border:none;border-radius:12px;background:var(--tomato);color:#fff;
@@ -718,6 +748,11 @@
 </style>
 </head>
 <body>
+
+<div id="appSplash">
+  <span class="splash-icon" aria-hidden="true">🍽️</span>
+  <span class="splash-title">FoodMe</span>
+</div>
 
 <div id="deleteAccountOverlay" class="modal-overlay" hidden>
   <div class="modal-card" id="deleteAccountCard"></div>
@@ -994,6 +1029,38 @@
   <div class="profile-posts-section" id="hashtagPostsFeed"></div>
 </main>
 
+<main id="view-decouvrirapp" class="view" hidden>
+  <div class="discover-hero">
+    <h2>Bienvenue sur FoodMe 🍽️</h2>
+    <p>Ton frigo, tes recettes, ta communauté gourmande — connecte-toi pour profiter de toutes les fonctionnalités.</p>
+  </div>
+  <div class="discover-feature">
+    <div class="icon">🧊</div>
+    <div><h4>Mon frigo</h4><p>Note ce que tu as chez toi et ne rachète plus ce que tu as déjà.</p></div>
+  </div>
+  <div class="discover-feature">
+    <div class="icon">🍳</div>
+    <div><h4>Cuisiner</h4><p>Des recettes trouvées automatiquement selon ce qu'il y a dans ton frigo.</p></div>
+  </div>
+  <div class="discover-feature">
+    <div class="icon">📖</div>
+    <div><h4>Mes plats</h4><p>Enregistre tes propres recettes et retrouve celles que tu as déjà cuisinées.</p></div>
+  </div>
+  <div class="discover-feature">
+    <div class="icon">👥</div>
+    <div><h4>Communauté</h4><p>Partage tes plats, suis tes amis et découvre des recettes de la communauté.</p></div>
+  </div>
+  <div class="discover-feature">
+    <div class="icon">📊</div>
+    <div><h4>Bilan</h4><p>Suis ce que tu cuisines et ce que tu manges au fil des semaines.</p></div>
+  </div>
+  <div class="discover-feature">
+    <div class="icon">⭐</div>
+    <div><h4>Premium</h4><p>Gestion fine des quantités du frigo, anti-gaspi et bien plus à venir.</p></div>
+  </div>
+  <button type="button" id="discoverCtaBtn" class="discover-cta">Se connecter ou créer un compte</button>
+</main>
+
 <main id="view-enregistrees" class="view" hidden>
   <button type="button" class="back-btn secondary-back-btn">← Retour</button>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -1058,8 +1125,18 @@ function passwordIsStrongEnough(password){
     && /[^A-Za-z0-9]/.test(password);
 }
 
+// ---- Écran de démarrage : reste affiché le temps de savoir si on est connecté, pour éviter ----
+// le flash de la page "Se connecter" avant que le fil d'actualité ne s'affiche.
+function hideSplash(){
+  const el = document.getElementById("appSplash");
+  if (!el || el.hidden) return;
+  el.classList.add("splash-fade-out");
+  setTimeout(() => { el.hidden = true; }, 350);
+}
+setTimeout(hideSplash, 3000); // filet de sécurité si la connexion au serveur est lente ou en échec
+
 async function initAuth(){
-  if (!sb) { renderAuthUI(); return; }
+  if (!sb) { renderAuthUI(); hideSplash(); return; }
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (session) await loadProfile(session.user);
@@ -1070,6 +1147,7 @@ async function initAuth(){
     else { currentUser = null; currentProfile = null; renderAuthUI(); }
   });
   renderAuthUI();
+  hideSplash();
 }
 
 async function loadProfile(user){
@@ -1190,11 +1268,29 @@ function applyAvatarToEl(el, username, color, avatarUrl){
   }
 }
 
+// ---- Navigation grisée pour les visiteurs non connectés (menu ☰ + onglets sauf Communauté) ----
+function updateAuthGatedNav(){
+  const disabled = !currentUser;
+  const menuBtnEl = document.getElementById("menuBtn");
+  if (menuBtnEl) menuBtnEl.classList.toggle("nav-disabled", disabled);
+  document.querySelectorAll(".tab-btn").forEach(b => {
+    if (b.dataset.tab === "communaute") return;
+    b.classList.toggle("nav-disabled", disabled);
+  });
+}
+
+// ---- Écran "Découvrir l'application", affiché à la place d'une action bloquée pour les visiteurs non connectés ----
+function showDiscoverScreen(){
+  document.getElementById("menuPanel").hidden = true;
+  document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== "view-decouvrirapp");
+}
+
 function renderAuthUI(){
   const loggedOutEl = document.getElementById("authLoggedOut");
   const loggedInEl = document.getElementById("authLoggedIn");
   updateHeaderAvatar();
   updateNotifBadge();
+  updateAuthGatedNav();
   if (!loggedOutEl) return; // la vue Communauté n'a pas encore été construite dans le DOM
   document.getElementById("authRecovery").hidden = true;
   loggedOutEl.hidden = !!currentUser;
@@ -3187,9 +3283,12 @@ const DIET_FILTERS = {
   vegetarien: r => ["Vegetarian", "Vegan"].includes(r.recipe.category),
   vegane: r => r.recipe.category === "Vegan",
   viande: r => MEAT_CATEGORIES.has(r.recipe.category),
-  poisson: r => r.recipe.category === "Seafood"
+  poisson: r => r.recipe.category === "Seafood",
+  // Catalogue TheMealDB : catégorie "Dessert". Recettes perso : type de plat "Dessert" (voir mealType,
+  // reporté dans recipe.category au chargement des résultats communautaires pour réutiliser ce même filtre).
+  patisserie: r => r.recipe.category === "Dessert"
 };
-const DIET_LABELS = { tous: "Tous", vegetarien: "🥬 Végétarien", vegane: "🌱 Végane", viande: "🍖 Viande", poisson: "🐟 Poisson" };
+const DIET_LABELS = { tous: "Tous", vegetarien: "🥬 Végétarien", vegane: "🌱 Végane", viande: "🍖 Viande", poisson: "🐟 Poisson", patisserie: "🍰 Pâtisserie" };
 
 function renderRecipeResults(){
   const resultsEl = document.getElementById("results");
@@ -3348,7 +3447,9 @@ async function fetchCommunityCustomResults(ingredients, titleQuery){
         return name && !isBasic(n) && !ingredientInFridge(name, ingredients);
       });
       return {
-        recipe: { id: row.id, image: row.image, area: null, category: null },
+        // category reprend le type de plat de la recette perso (ex: "Dessert") — permet de réutiliser
+        // le même filtre "Pâtisserie" que pour les recettes du catalogue TheMealDB (DIET_FILTERS.patisserie).
+        recipe: { id: row.id, image: row.image, area: null, category: row.meal_type || null },
         titleFr: row.title,
         prepMinutes: row.prep_minutes || null,
         totalMinutes: row.total_minutes || null,
@@ -5507,6 +5608,7 @@ function showSecondaryView(id, param){
 }
 document.getElementById("menuBtn").addEventListener("click", (e) => {
   e.stopPropagation();
+  if (!currentUser) { showDiscoverScreen(); return; }
   document.getElementById("notifPanel").hidden = true;
   const panel = document.getElementById("menuPanel");
   panel.hidden = !panel.hidden;
@@ -5660,7 +5762,11 @@ function switchTab(tab){
     renderCommunaute();
   }
 }
-document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click", () => switchTab(btn.dataset.tab)));
+document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click", () => {
+  if (!currentUser && btn.dataset.tab !== "communaute") { showDiscoverScreen(); return; }
+  switchTab(btn.dataset.tab);
+}));
+document.getElementById("discoverCtaBtn").addEventListener("click", () => switchTab("communaute"));
 updateMenuBadge();
 updateWeekMenuBadge();
 updateSavedMenuBadge();
