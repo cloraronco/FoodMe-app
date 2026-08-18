@@ -597,7 +597,18 @@
   #appSplash .splash-icon{font-size:52px;line-height:1;}
   #appSplash .splash-title{
     font-family:var(--font-display);font-weight:680;font-size:44px;letter-spacing:-.01em;color:var(--ink);
+    display:inline-flex;
   }
+  @keyframes splashLetterIn{
+    from{opacity:0;transform:translateY(8px);}
+    to{opacity:1;transform:translateY(0);}
+  }
+  #appSplash .splash-icon,
+  #appSplash .splash-letter{
+    opacity:0;
+    animation:splashLetterIn .5s cubic-bezier(.2,.8,.2,1) forwards;
+  }
+  #appSplash .splash-letter.is-space{width:.2em;}
   .auth-form{display:flex;flex-direction:column;gap:10px;margin-top:14px;}
   .primary-btn{
     padding:13px;border:none;border-radius:12px;background:var(--tomato);color:#fff;
@@ -751,7 +762,7 @@
 
 <div id="appSplash">
   <span class="splash-icon" aria-hidden="true">🍽️</span>
-  <span class="splash-title">FoodMe</span>
+  <span class="splash-title" role="text" aria-label="FoodMe"></span>
 </div>
 
 <div id="deleteAccountOverlay" class="modal-overlay" hidden>
@@ -1126,12 +1137,37 @@ function passwordIsStrongEnough(password){
 }
 
 // ---- Écran de démarrage : reste affiché le temps de savoir si on est connecté, pour éviter ----
-// le flash de la page "Se connecter" avant que le fil d'actualité ne s'affiche.
+// le flash de la page "Se connecter" avant que le fil d'actualité ne s'affiche. Le nom s'affiche
+// lettre par lettre en fondu — on construit les lettres en JS pour ne changer qu'un seul endroit
+// (SPLASH_TEXT) le jour où le logo remplacera ce texte.
+const SPLASH_TEXT = "FoodMe";
+const SPLASH_ICON_DELAY = 0.05;
+const SPLASH_LETTER_START = 0.35;
+const SPLASH_LETTER_STEP = 0.07;
+(function buildSplashLetters(){
+  const iconEl = document.querySelector("#appSplash .splash-icon");
+  const titleEl = document.querySelector("#appSplash .splash-title");
+  if (iconEl) iconEl.style.animationDelay = `${SPLASH_ICON_DELAY}s`;
+  if (titleEl) {
+    titleEl.innerHTML = SPLASH_TEXT.split("").map((ch, i) => {
+      const delay = SPLASH_LETTER_START + i * SPLASH_LETTER_STEP;
+      const cls = ch === " " ? "splash-letter is-space" : "splash-letter";
+      return `<span class="${cls}" aria-hidden="true" style="animation-delay:${delay.toFixed(2)}s">${ch === " " ? "&nbsp;" : ch}</span>`;
+    }).join("");
+  }
+})();
+// Durée minimale d'affichage : laisse le temps à l'animation lettre par lettre de se terminer
+// même si la vérification de connexion répond très vite (sinon le splash disparaîtrait trop tôt).
+const SPLASH_MIN_MS = Math.round((SPLASH_LETTER_START + SPLASH_TEXT.length * SPLASH_LETTER_STEP) * 1000) + 500;
+const splashStartedAt = Date.now();
 function hideSplash(){
   const el = document.getElementById("appSplash");
-  if (!el || el.hidden) return;
-  el.classList.add("splash-fade-out");
-  setTimeout(() => { el.hidden = true; }, 350);
+  if (!el || el.hidden || el.classList.contains("splash-fade-out")) return;
+  const wait = Math.max(0, SPLASH_MIN_MS - (Date.now() - splashStartedAt));
+  setTimeout(() => {
+    el.classList.add("splash-fade-out");
+    setTimeout(() => { el.hidden = true; }, 350);
+  }, wait);
 }
 setTimeout(hideSplash, 3000); // filet de sécurité si la connexion au serveur est lente ou en échec
 
@@ -1143,7 +1179,10 @@ async function initAuth(){
   } catch (e) { /* pas grave, la connexion se retentera au moment de se logger */ }
   sb.auth.onAuthStateChange((event, session) => {
     if (event === "PASSWORD_RECOVERY") { showRecoveryForm(); return; }
-    if (session) loadProfile(session.user);
+    // Supabase déclenche cet évènement une première fois dès l'abonnement, avec la session déjà traitée
+    // juste au-dessus par getSession() : sans ce garde-fou, le profil et le fil sont rechargés deux fois
+    // de suite au lancement, ce qui provoquait un double clignotement visible à l'écran.
+    if (session) { if (!currentUser || currentUser.id !== session.user.id) loadProfile(session.user); }
     else { currentUser = null; currentProfile = null; renderAuthUI(); }
   });
   renderAuthUI();
@@ -3258,6 +3297,10 @@ function toInternalRecipe(meal){
 // ---- Tri et filtres des résultats de recherche ----
 let lastSearchResults = [];
 let currentRecipeReturnTo = "cuisiner";
+// Jeton incrémenté à chaque nouvelle recherche/ouverture de fiche dans "Cuisiner" : une réponse en retard
+// (ex. clic rapide sur une autre recette pendant qu'un appel précédent était encore en cours) est ignorée
+// au lieu d'écraser l'écran avec un résultat qui ne correspond plus à ce qui a été demandé en dernier.
+let cuisinerRequestId = 0;
 // Tri par défaut : "Périssable en priorité" si l'anti-gaspillage est activé (n'a de sens que dans ce cas), sinon "Faisabilité".
 let cuisinerSort = isAntiWasteActive() ? "perissable" : "faisabilite";
 let dietFilter = "tous";
@@ -3467,6 +3510,7 @@ async function fetchCommunityCustomResults(ingredients, titleQuery){
 
 // ---- Recherche de recettes 100% faisables (ou presque) avec ce qu'on a ----
 async function searchRecipes(){
+  const requestId = ++cuisinerRequestId;
   const resultsEl = document.getElementById("results");
   resultsEl.innerHTML = recipeSkeletonHTML();
   cuisinerSource = "toutes";
@@ -3476,11 +3520,13 @@ async function searchRecipes(){
 
   try {
     const rawResponses = await fetchJsonInBatches(ingredients.map(ing => `${API_BASE}filter.php?i=${ing}`));
+    if (requestId !== cuisinerRequestId) return; // une recherche plus récente a déjà pris le relais
     const responses = rawResponses.map(data => data ? { ok: true, data } : { ok: false });
 
     const allFailed = responses.every(r => !r.ok);
     if (allFailed) {
       const community = await fetchCommunityCustomResults(ingredients);
+      if (requestId !== cuisinerRequestId) return;
       if (community.length === 0) {
         resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
         return;
@@ -3507,12 +3553,14 @@ async function searchRecipes(){
       .slice(0, 25);
 
     const rawDetails = overlapMap.size > 0 ? await fetchJsonInBatches(candidates.map(c => `${API_BASE}lookup.php?i=${c.idMeal}`)) : [];
+    if (requestId !== cuisinerRequestId) return;
     const details = rawDetails.map(d => (d && d.meals && d.meals[0]) || null);
 
     const [scored, community] = await Promise.all([
       scoreAndTranslate(details.filter(Boolean), ingredients).then(s => s.slice(0, 12)),
       fetchCommunityCustomResults(ingredients)
     ]);
+    if (requestId !== cuisinerRequestId) return;
     const combined = [...scored, ...community];
 
     if (combined.length === 0) {
@@ -3524,7 +3572,7 @@ async function searchRecipes(){
     renderRecipeResults();
 
   } catch (e) {
-    resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
+    if (requestId === cuisinerRequestId) resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
   }
 }
 
@@ -3561,17 +3609,20 @@ async function scoreAndTranslate(meals, ingredients){
 
 // ---- Recherche d'une recette par son nom (indépendante des ingrédients du frigo) ----
 async function searchRecipeByName(query){
+  const requestId = ++cuisinerRequestId;
   const resultsEl = document.getElementById("results");
   resultsEl.innerHTML = recipeSkeletonHTML();
   cuisinerSource = "toutes";
   const ingredients = Array.from(selected);
   try {
     const data = await fetchJsonWithRetry(`${API_BASE}search.php?s=${encodeURIComponent(query)}`);
+    if (requestId !== cuisinerRequestId) return;
     const meals = data.meals || [];
     const [scored, community] = await Promise.all([
       scoreAndTranslate(meals.slice(0, 12), ingredients),
       fetchCommunityCustomResults(ingredients, query)
     ]);
+    if (requestId !== cuisinerRequestId) return;
     const combined = [...scored, ...community];
     if (combined.length === 0) {
       resultsEl.innerHTML = `<div class="state-msg">Aucune recette ne s'appelle "${query}" 😕<br><button type="button" class="rate-taste-btn" id="backToFridgeSearchBtn">← Revenir à mes ingrédients</button></div>`;
@@ -3581,11 +3632,12 @@ async function searchRecipeByName(query){
     lastSearchResults = combined;
     renderRecipeResults();
   } catch (e) {
-    resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
+    if (requestId === cuisinerRequestId) resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
   }
 }
 
 async function showRecipeDetail(id, returnTo){
+  const requestId = ++cuisinerRequestId;
   currentRecipeReturnTo = returnTo || "cuisiner";
   document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== "view-cuisiner");
   const resultsEl = document.getElementById("results");
@@ -3594,14 +3646,20 @@ async function showRecipeDetail(id, returnTo){
   if (!recipe) {
     resultsEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Chargement de la recette…</div>`;
     try {
-      const data = await fetchJsonWithRetry(`${API_BASE}lookup.php?i=${id}`);
-      const meal = data.meals && data.meals[0];
-      recipe = meal ? toInternalRecipe(meal) : null;
+      // L'API TheMealDB répond parfois avec une liste vide alors que la recette existe bien (aléa réseau côté serveur) :
+      // on retente quelques fois avant d'afficher "introuvable" pour de bon.
+      for (let attempt = 1; attempt <= 3 && !recipe; attempt++) {
+        const data = await fetchJsonWithRetry(`${API_BASE}lookup.php?i=${id}`);
+        const meal = data.meals && data.meals[0];
+        if (meal) recipe = toInternalRecipe(meal);
+        else if (attempt < 3) await new Promise(r => setTimeout(r, 400 * attempt));
+      }
     } catch (e) {
-      resultsEl.innerHTML = `<div class="state-msg">Impossible de charger cette recette. Vérifie ta connexion internet.</div>`;
+      if (requestId === cuisinerRequestId) resultsEl.innerHTML = `<div class="state-msg">Impossible de charger cette recette. Vérifie ta connexion internet.</div>`;
       return;
     }
   }
+  if (requestId !== cuisinerRequestId) return; // une autre recette a été ouverte entre-temps
   if (!recipe) {
     resultsEl.innerHTML = `<div class="state-msg">Recette introuvable.</div>`;
     return;
@@ -3621,6 +3679,7 @@ async function showRecipeDetail(id, returnTo){
     fetchCookCount(recipe.id),
     ...rawSteps.map((s, i) => translateLongText(s, `instr_${recipe.id}_step${i}`))
   ]);
+  if (requestId !== cuisinerRequestId) return; // une autre recette a été ouverte entre-temps
   const translationIncomplete = !titleT.complete || stepTranslations.some(t => !t.complete);
   recipe.titleFr = titleT.text; // conservé pour un usage ultérieur (ex. partage communautaire)
 
@@ -5159,6 +5218,7 @@ function formatTimerLabel(seconds){
 }
 
 async function showCustomRecipeDetail(id, returnTo){
+  const requestId = ++cuisinerRequestId;
   currentRecipeReturnTo = returnTo || "mesplats";
   document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== "view-cuisiner");
   const resultsEl = document.getElementById("results");
@@ -5193,6 +5253,7 @@ async function showCustomRecipeDetail(id, returnTo){
       }
     } catch (e) { console.error("Chargement recette perso partagée :", e); }
   }
+  if (requestId !== cuisinerRequestId) return; // une autre recette a été ouverte entre-temps
   if (!recipe) {
     resultsEl.innerHTML = `<div class="state-msg">Cette recette perso n'est pas disponible ici.<br>Elle n'existe plus, ou son auteur ne l'a pas partagée publiquement.</div>`;
     return;
@@ -5200,6 +5261,7 @@ async function showCustomRecipeDetail(id, returnTo){
   recipe.titleFr = recipe.title; // compatibilité avec attachDoneFlow/publishToCommunity
   recipe.isCustom = true;
   const cookCount = await fetchCookCount(recipe.id);
+  if (requestId !== cuisinerRequestId) return; // une autre recette a été ouverte entre-temps
 
   const missing = recipe.ingredients.filter(({ name }) => {
     const n = normalize(name);
