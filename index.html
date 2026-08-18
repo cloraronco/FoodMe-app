@@ -247,6 +247,8 @@
     padding:4px 10px;border-radius:999px;
   }
   .match.ok{color:var(--basil-ink);background:var(--basil-tint);}
+  .stock-check-box{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0;}
+  .stock-check-box .rate-taste-btn{margin-top:10px;}
   .recipe-detail{
     position:relative;
     background:var(--surface);
@@ -371,6 +373,9 @@
   .custom-recipe-form textarea.search-input{min-height:80px;resize:vertical;font-family:var(--font-body);}
   .custom-recipe-form h4{margin:16px 0 8px;font-size:12px;text-transform:uppercase;color:var(--tomato);letter-spacing:.08em;font-weight:700;}
   .dyn-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .ing-precise-row{margin-top:-4px;margin-bottom:14px;padding-left:2px;}
+  .ing-precise-row .ing-amount{max-width:150px;font-size:13px;padding:8px 10px;}
+  .ing-precise-row .ing-unit{font-size:13px;border:1px solid var(--line);border-radius:8px;padding:8px 6px;background:var(--surface);color:var(--ink);font-family:var(--font-body);}
   .dyn-row .search-input{margin-bottom:0;flex:1;min-width:0;}
   .dyn-remove{background:none;border:none;color:var(--ink-dim);font-size:14px;cursor:pointer;padding:6px;flex-shrink:0;}
   .dyn-remove:hover{color:var(--tomato);}
@@ -495,6 +500,10 @@
   .expiry-hint{font-size:11px;opacity:.55;margin-left:3px;}
   .pill-label.clickable{cursor:pointer;border-bottom:1px dashed currentColor;padding-bottom:1px;}
   .expiry-input{margin-left:6px;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 4px;}
+  .qty-hint{font-size:11px;opacity:.55;margin-left:3px;}
+  .qty-row{display:flex;gap:4px;margin:4px 0 0 4px;width:100%;}
+  .qty-amount-input{width:64px;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:3px 6px;}
+  .qty-unit-select{font-size:12px;border:1px solid var(--line);border-radius:6px;padding:3px 4px;}
   .settings-row{
     display:flex;align-items:center;justify-content:space-between;gap:14px;
     background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;
@@ -510,6 +519,10 @@
     content:"";position:absolute;left:3px;top:3px;width:20px;height:20px;border-radius:50%;
     background:#fff;transition:transform .15s;
   }
+  .premium-master-row{border-color:var(--saffron);background:var(--saffron-tint);}
+  .premium-features-list{margin-top:16px;display:flex;flex-direction:column;gap:12px;transition:opacity .15s;}
+  .premium-features-list.disabled{opacity:.45;pointer-events:none;}
+  .premium-soon-badge{font-size:10.5px;padding:2px 8px;vertical-align:middle;margin-left:4px;}
   .switch input:checked + .switch-slider{background:var(--basil);}
   .switch input:checked + .switch-slider::before{transform:translateX(18px);}
   .waste-stats{
@@ -749,6 +762,7 @@
     <button type="button" class="menu-item" data-action="enregistrees">🔖 Recettes enregistrées <span id="menuSavedCount" class="menu-count"></span></button>
     <button type="button" class="menu-item" data-action="bilan">📊 Bilan</button>
     <button type="button" class="menu-item" data-action="liste">🛒 Liste de courses <span id="menuListCount" class="menu-count"></span></button>
+    <button type="button" class="menu-item" data-action="premium">⭐ Premium</button>
     <button type="button" class="menu-item" data-action="parametres">⚙️ Paramètres<span id="menuItemUpdateDot" class="menu-dot-inline" hidden></span></button>
   </div>
   <div id="notifPanel" class="notif-panel" hidden>
@@ -793,6 +807,45 @@
   <h2 style="margin-top:0;">Ma semaine</h2>
   <p class="hint" style="margin-top:-8px;">Choisis les recettes que tu comptes cuisiner cette semaine, puis ajoute tous leurs ingrédients à ta liste de courses en une fois.</p>
   <div id="semaineContent"></div>
+</main>
+
+<main id="view-premium" class="view" hidden>
+  <button type="button" class="back-btn secondary-back-btn">← Retour</button>
+  <h2 style="margin-top:0;">⭐ Premium</h2>
+  <p class="hint" style="margin-top:-8px;">Active Premium pour débloquer des fonctionnalités avancées, puis choisis lesquelles utiliser.</p>
+  <div class="settings-row premium-master-row">
+    <div>
+      <div class="settings-label">⭐ Premium</div>
+      <div class="settings-desc">Simulation locale pour l'instant — aucun paiement n'est encore branché.</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="premiumActiveToggle">
+      <span class="switch-slider"></span>
+    </label>
+  </div>
+  <div id="premiumFeaturesList" class="premium-features-list">
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">🗓️ Anti-gaspillage</div>
+        <div class="settings-desc">Ajoute une date de péremption facultative à tes ingrédients, avec une petite alerte s'ils vont bientôt périmer, et fait remonter en priorité les recettes qui utilisent ce qui périme bientôt.</div>
+        <div id="wasteStats" class="waste-stats" hidden></div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="antiWasteToggle">
+        <span class="switch-slider"></span>
+      </label>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="settings-label">📊 Gestion des quantités du frigo</div>
+        <div class="settings-desc">Suis les quantités réelles de tes ingrédients pour savoir si tu as assez pour une recette perso, et n'ajouter que ce qu'il te manque à la liste de courses depuis "Ma semaine". Limité aux recettes perso pour l'instant.</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="quantitiesActiveToggle">
+        <span class="switch-slider"></span>
+      </label>
+    </div>
+  </div>
 </main>
 
 <main id="view-parametres" class="view" hidden>
@@ -844,17 +897,6 @@
       <span class="switch-slider"></span>
     </label>
   </div>
-  <div class="settings-row" style="margin-top:22px;">
-    <div>
-      <div class="settings-label">🗓️ Suivi anti-gaspillage</div>
-      <div class="settings-desc">Ajoute une date de péremption facultative à tes ingrédients, avec une petite alerte s'ils vont bientôt périmer. Entièrement optionnel — tu n'es jamais obligé de renseigner une date.</div>
-    </div>
-    <label class="switch">
-      <input type="checkbox" id="antiWasteToggle">
-      <span class="switch-slider"></span>
-    </label>
-  </div>
-  <div id="wasteStats" class="waste-stats" hidden></div>
   <div class="settings-row" style="margin-top:22px;">
     <div>
       <div class="settings-label">🔄 Mises à jour</div>
@@ -1078,6 +1120,7 @@ async function pullFromCloudAndMerge(){
       selected.clear();
       (data.fridge || []).forEach(v => selected.add(v));
       saveExpiryDates(data.expiry || {});
+      saveFridgeQuantities(data.fridge_quantities || {});
       saveCookedDishes(data.cooked_dishes || []);
       saveShoppingList(data.shopping_list || []);
       saveWeekRecipes(data.week_recipes || []);
@@ -1116,6 +1159,7 @@ async function pushToCloud(){
       id: currentUser.id,
       fridge: Array.from(selected),
       expiry: loadExpiryDates(),
+      fridge_quantities: loadFridgeQuantities(),
       cooked_dishes: loadCookedDishes(),
       shopping_list: loadShoppingList(),
       week_recipes: loadWeekRecipes(),
@@ -2450,11 +2494,22 @@ function filterIngredients(query){
 }
 
 // ---- Réglages (menu ☰ → Paramètres) ----
+const DEFAULT_SETTINGS = { antiWaste: false, premiumActive: false, quantitiesActive: false };
 function loadSettings(){
-  try { return { antiWaste: false, ...JSON.parse(localStorage.getItem("foodme_settings") || "{}") }; }
-  catch(e) { return { antiWaste: false }; }
+  try { return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem("foodme_settings") || "{}") }; }
+  catch(e) { return { ...DEFAULT_SETTINGS }; }
 }
 function saveSettings(s){ localStorage.setItem("foodme_settings", JSON.stringify(s)); }
+// L'anti-gaspillage et la gestion fine des quantités sont des fonctionnalités Premium : elles ne
+// s'appliquent que si Premium est activé ET que la case correspondante est cochée dans l'onglet Premium.
+function isAntiWasteActive(){
+  const s = loadSettings();
+  return !!(s.premiumActive && s.antiWaste);
+}
+function isQuantitiesActive(){
+  const s = loadSettings();
+  return !!(s.premiumActive && s.quantitiesActive);
+}
 
 // ---- Anti-gaspillage (optionnel) : dates de péremption par ingrédient + compteur "sauvé du gaspillage" ----
 function loadExpiryDates(){
@@ -2476,6 +2531,74 @@ function daysUntil(dateStr){
 function formatShortExpiryDate(dateStr){
   return new Date(dateStr + "T00:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
+// ---- Gestion fine des quantités [PREMIUM] : quantité + unité par ingrédient du frigo ----
+const QUANTITY_UNITS = { g: "g", kg: "kg", mL: "mL", L: "L", piece: "pièce" };
+function loadFridgeQuantities(){
+  try { return JSON.parse(localStorage.getItem("foodme_fridge_quantities") || "{}"); }
+  catch(e) { return {}; }
+}
+function saveFridgeQuantities(q){ localStorage.setItem("foodme_fridge_quantities", JSON.stringify(q)); }
+function setFridgeQuantity(value, amount, unit){
+  const q = loadFridgeQuantities();
+  if (amount && unit) q[value] = { amount: Number(amount), unit };
+  else delete q[value];
+  saveFridgeQuantities(q);
+  scheduleCloudSync();
+}
+// Convertit une quantité vers une unité de base par famille (g pour la masse, mL pour le volume,
+// pièce pour le comptage) — deux quantités ne sont comparables que si elles sont de la même famille.
+function toBaseQuantity(amount, unit){
+  if (unit === "g") return { value: amount, family: "mass" };
+  if (unit === "kg") return { value: amount * 1000, family: "mass" };
+  if (unit === "mL") return { value: amount, family: "volume" };
+  if (unit === "L") return { value: amount * 1000, family: "volume" };
+  if (unit === "piece") return { value: amount, family: "piece" };
+  return null;
+}
+// Reconvertit une quantité en unité de base vers une unité "lisible" pour l'affichage (kg/L au-delà d'un seuil)
+function fromBaseQuantity(baseValue, family){
+  if (family === "mass") return baseValue >= 1000 ? { amount: round2(baseValue / 1000), unit: "kg" } : { amount: round2(baseValue), unit: "g" };
+  if (family === "volume") return baseValue >= 1000 ? { amount: round2(baseValue / 1000), unit: "L" } : { amount: round2(baseValue), unit: "mL" };
+  return { amount: round2(baseValue), unit: "piece" };
+}
+function round2(n){ return Math.round(n * 100) / 100; }
+// Retrouve la quantité en stock correspondant à un nom d'ingrédient de recette perso (texte libre,
+// généralement en français). Le frigo stocke ses ingrédients sous leur identifiant anglais (ex: "Tomatoes"),
+// donc on compare aussi au libellé français affiché dans le frigo (ex: "Tomate") pour que le rapprochement
+// fonctionne avec des noms de recette en français comme avec l'identifiant technique.
+function findFridgeQuantityForIngredient(ingName){
+  const quantities = loadFridgeQuantities();
+  const allItems = CATEGORIES.flatMap(c => c.items);
+  for (const value of Object.keys(quantities)) {
+    if (ingredientNamesMatch(ingName, value)) return quantities[value];
+    const catItem = allItems.find(([, v]) => v === value);
+    if (catItem && ingredientNamesMatch(ingName, catItem[0])) return quantities[value];
+  }
+  return null;
+}
+// Compare, pour une recette perso et un nombre de personnes donné, les quantités nécessaires
+// (ingrédients avec quantité précise renseignée) au stock du frigo. Renvoie ce qu'il manque.
+function computeStockFeasibility(recipe, servings){
+  const ratio = servings / BASE_SERVINGS;
+  const shortages = [];
+  let quantifiedCount = 0;
+  (recipe.ingredients || []).forEach(ing => {
+    if (ing.amount == null || !ing.unit) return;
+    quantifiedCount++;
+    const needed = toBaseQuantity(ing.amount * ratio, ing.unit);
+    if (!needed) return;
+    const stock = findFridgeQuantityForIngredient(ing.name);
+    const available = stock ? toBaseQuantity(stock.amount, stock.unit) : null;
+    const availableValue = (available && available.family === needed.family) ? available.value : 0;
+    const missing = needed.value - availableValue;
+    if (missing > 0.001) {
+      const disp = fromBaseQuantity(missing, needed.family);
+      shortages.push({ name: ing.name, amount: disp.amount, unit: disp.unit });
+    }
+  });
+  return { quantifiedCount, shortages };
+}
+
 function getWasteSavedCount(){ return parseInt(localStorage.getItem("foodme_waste_saved") || "0", 10); }
 function incrementWasteSaved(n){
   localStorage.setItem("foodme_waste_saved", String(getWasteSavedCount() + n));
@@ -2491,8 +2614,11 @@ function updateFridgeSummary(){
   }
   const searchInput = document.getElementById("fridgeSearch");
   const q = searchInput ? searchInput.value.trim().toLowerCase() : "";
-  const antiWaste = loadSettings().antiWaste;
+  const antiWaste = isAntiWasteActive();
+  const quantitiesOn = isQuantitiesActive();
   const expiry = antiWaste ? loadExpiryDates() : {};
+  const quantities = quantitiesOn ? loadFridgeQuantities() : {};
+  const clickable = antiWaste || quantitiesOn;
   let anyMatch = !q;
   summaryEl.innerHTML = CATEGORIES.map(cat => {
     const items = cat.items.filter(([label, value]) => selected.has(value) && (!q || label.toLowerCase().includes(q)));
@@ -2506,12 +2632,21 @@ function updateFridgeSummary(){
             const dateStr = expiry[value];
             const days = dateStr ? daysUntil(dateStr) : null;
             const warn = days !== null && days <= 3;
+            const qty = quantities[value];
             return `
             <span class="pill${warn ? " expiring" : ""}" data-value="${value}">
-              <span class="pill-label${antiWaste ? " clickable" : ""}" data-value="${value}">${label}${warn ? `<span class="expiry-tag">${days < 0 ? "⚠️ périmé" : days === 0 ? "⚠️ auj." : `⚠️ ${days}j`}</span>` : (antiWaste && dateStr) ? `<span class="expiry-hint">📅 ${formatShortExpiryDate(dateStr)}</span>` : antiWaste ? `<span class="expiry-hint">📅</span>` : ""}</span>
+              <span class="pill-label${clickable ? " clickable" : ""}" data-value="${value}">${label}${warn ? `<span class="expiry-tag">${days < 0 ? "⚠️ périmé" : days === 0 ? "⚠️ auj." : `⚠️ ${days}j`}</span>` : (antiWaste && dateStr) ? `<span class="expiry-hint">📅 ${formatShortExpiryDate(dateStr)}</span>` : antiWaste ? `<span class="expiry-hint">📅</span>` : ""}${qty ? `<span class="qty-hint">📏 ${qty.amount}${QUANTITY_UNITS[qty.unit]}</span>` : (quantitiesOn ? `<span class="qty-hint">📏</span>` : "")}</span>
               <button aria-label="Retirer">×</button>
             </span>
             ${antiWaste ? `<input type="date" class="expiry-input" data-value="${value}" value="${dateStr || ""}" hidden>` : ""}
+            ${quantitiesOn ? `
+              <div class="qty-row" data-value="${value}" hidden>
+                <input type="number" min="0" step="0.1" class="qty-amount-input" data-value="${value}" placeholder="Qté" value="${qty ? qty.amount : ""}">
+                <select class="qty-unit-select" data-value="${value}">
+                  <option value="">Unité</option>
+                  ${Object.entries(QUANTITY_UNITS).map(([k, lbl]) => `<option value="${k}"${qty && qty.unit === k ? " selected" : ""}>${lbl}</option>`).join("")}
+                </select>
+              </div>` : ""}
           `;
           }).join("")}
         </div>
@@ -2521,17 +2656,41 @@ function updateFridgeSummary(){
   if (!anyMatch) {
     summaryEl.innerHTML = `<div class="state-msg" style="padding:12px 0;">😕 Non, tu n'as pas "${searchInput.value.trim()}" dans ton frigo.</div>`;
   }
-  if (antiWaste) {
+  if (clickable) {
     summaryEl.querySelectorAll(".pill-label.clickable").forEach(label => {
       label.addEventListener("click", () => {
-        const input = summaryEl.querySelector(`.expiry-input[data-value="${CSS.escape(label.dataset.value)}"]`);
-        input.hidden = false;
-        try { input.showPicker ? input.showPicker() : input.focus(); }
-        catch(e) { input.focus(); } // showPicker() peut échouer selon le contexte (ex. aperçu en iframe) — on retombe sur le focus classique
+        const dateInput = summaryEl.querySelector(`.expiry-input[data-value="${CSS.escape(label.dataset.value)}"]`);
+        const qtyRow = summaryEl.querySelector(`.qty-row[data-value="${CSS.escape(label.dataset.value)}"]`);
+        if (dateInput) {
+          dateInput.hidden = false;
+          try { dateInput.showPicker ? dateInput.showPicker() : dateInput.focus(); }
+          catch(e) { dateInput.focus(); } // showPicker() peut échouer selon le contexte (ex. aperçu en iframe) — on retombe sur le focus classique
+        }
+        if (qtyRow) {
+          qtyRow.hidden = false;
+          if (!dateInput) qtyRow.querySelector(".qty-amount-input").focus();
+        }
       });
     });
+  }
+  if (antiWaste) {
     summaryEl.querySelectorAll(".expiry-input").forEach(input => {
       input.addEventListener("change", () => setExpiryDate(input.dataset.value, input.value));
+    });
+  }
+  if (quantitiesOn) {
+    function commitQty(value){
+      const row = summaryEl.querySelector(`.qty-row[data-value="${CSS.escape(value)}"]`);
+      const amount = row.querySelector(".qty-amount-input").value;
+      const unit = row.querySelector(".qty-unit-select").value;
+      setFridgeQuantity(value, amount, unit);
+      updateFridgeSummary();
+    }
+    summaryEl.querySelectorAll(".qty-amount-input").forEach(input => {
+      input.addEventListener("change", () => commitQty(input.dataset.value));
+    });
+    summaryEl.querySelectorAll(".qty-unit-select").forEach(select => {
+      select.addEventListener("change", () => commitQty(select.dataset.value));
     });
   }
   summaryEl.querySelectorAll(".pill button[aria-label='Retirer']").forEach(btn => {
@@ -2571,6 +2730,18 @@ function ingredientNamesMatch(nameA, nameB){
   const b = singularize(normalize(nameB));
   if (a === b) return true;
   return new RegExp(`\\b${b}\\b`).test(a) || new RegExp(`\\b${a}\\b`).test(b);
+}
+// Comme ingredientNamesMatch, mais compare aussi au libellé français du frigo (ex: "Tomate") et pas
+// seulement à son identifiant technique anglais (ex: "Tomatoes") — utile pour les recettes perso, dont
+// les ingrédients sont généralement nommés en français. Sans risque pour les recettes du catalogue
+// (en anglais) : on ne fait qu'ajouter une deuxième façon de reconnaître la même correspondance.
+function ingredientInFridge(name, fridgeValues){
+  const allItems = CATEGORIES.flatMap(c => c.items);
+  return fridgeValues.some(v => {
+    if (ingredientNamesMatch(name, v)) return true;
+    const catItem = allItems.find(([, val]) => val === v);
+    return catItem && ingredientNamesMatch(name, catItem[0]);
+  });
 }
 
 // ---- Ingrédients "de base" qu'on considère toujours dispo (pas besoin de les sélectionner) ----
@@ -2992,7 +3163,7 @@ function toInternalRecipe(meal){
 let lastSearchResults = [];
 let currentRecipeReturnTo = "cuisiner";
 // Tri par défaut : "Périssable en priorité" si l'anti-gaspillage est activé (n'a de sens que dans ce cas), sinon "Faisabilité".
-let cuisinerSort = loadSettings().antiWaste ? "perissable" : "faisabilite";
+let cuisinerSort = isAntiWasteActive() ? "perissable" : "faisabilite";
 let dietFilter = "tous";
 let areaFilter = "toutes";
 let expiringOnly = false;
@@ -3024,7 +3195,7 @@ function renderRecipeResults(){
   const resultsEl = document.getElementById("results");
   if (lastSearchResults.length === 0) return;
 
-  const antiWaste = loadSettings().antiWaste;
+  const antiWaste = isAntiWasteActive();
   const hasCommunity = lastSearchResults.some(r => r.isCustom);
   if (!hasCommunity) cuisinerSource = "toutes"; // évite un filtre "coincé" sans bouton pour en sortir
   let list = cuisinerSource === "communaute" ? lastSearchResults.filter(r => r.isCustom) : lastSearchResults;
@@ -3174,7 +3345,7 @@ async function fetchCommunityCustomResults(ingredients, titleQuery){
       const recipeIngredients = row.ingredients || [];
       const missing = recipeIngredients.filter(({ name }) => {
         const n = normalize(name);
-        return name && !isBasic(n) && !ingredients.some(v => ingredientNamesMatch(name, v));
+        return name && !isBasic(n) && !ingredientInFridge(name, ingredients);
       });
       return {
         recipe: { id: row.id, image: row.image, area: null, category: null },
@@ -3258,7 +3429,7 @@ async function searchRecipes(){
 
 // ---- Logique de scoring partagée par la recherche par ingrédients et la recherche par nom ----
 async function scoreAndTranslate(meals, ingredients){
-  const expiry = loadSettings().antiWaste ? loadExpiryDates() : {};
+  const expiry = isAntiWasteActive() ? loadExpiryDates() : {};
 
   const scored = meals.map(toInternalRecipe).map(recipe => {
     const missing = recipe.ingredients.filter(({ name }) => {
@@ -3497,6 +3668,10 @@ async function buildWeekShoppingList(){
   const week = loadWeekRecipes();
   const preciseTotals = {}; // nom normalisé -> { name, qty }
   const approxSeen = new Set();
+  // Totaux "quantité précise" [PREMIUM] : agrégés sur toute la semaine, puis comparés au stock du frigo
+  // une seule fois (et non recette par recette), pour ne demander d'acheter que ce qui manque vraiment.
+  const fineTotals = {};
+  const quantitiesOn = isQuantitiesActive();
   const itemsToAdd = [];
   for (const w of week) {
     let recipe = recipeCache.get(w.id);
@@ -3513,10 +3688,18 @@ async function buildWeekShoppingList(){
     }
     if (!recipe) continue;
     const ratio = (w.servings || BASE_SERVINGS) / BASE_SERVINGS;
-    recipe.ingredients.forEach(({ name, measure }) => {
+    recipe.ingredients.forEach(({ name, measure, amount, unit }) => {
       const n = normalize(name);
       if (isBasic(n)) return;
-      if (Array.from(selected).some(v => ingredientNamesMatch(name, v))) return; // déjà au frigo
+      if (quantitiesOn && amount != null && unit) {
+        const needed = toBaseQuantity(amount * ratio, unit);
+        if (needed) {
+          if (!fineTotals[n]) fineTotals[n] = { name, value: 0, family: needed.family };
+          if (fineTotals[n].family === needed.family) fineTotals[n].value += needed.value;
+          return;
+        }
+      }
+      if (ingredientInFridge(name, Array.from(selected))) return; // déjà au frigo
       const trimmed = (measure || "").trim();
       const isPrecise = /^\d+(\.\d+)?$/.test(trimmed);
       if (isPrecise) {
@@ -3532,6 +3715,16 @@ async function buildWeekShoppingList(){
     const rounded = Math.round(qty * 100) / 100;
     const display = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
     itemsToAdd.push({ name, measure: display });
+  });
+  Object.values(fineTotals).forEach(({ name, value, family }) => {
+    const stock = findFridgeQuantityForIngredient(name);
+    const available = stock ? toBaseQuantity(stock.amount, stock.unit) : null;
+    const availableValue = (available && available.family === family) ? available.value : 0;
+    const missing = value - availableValue;
+    if (missing > 0.001) {
+      const disp = fromBaseQuantity(missing, family);
+      itemsToAdd.push({ name, measure: `${disp.amount}${QUANTITY_UNITS[disp.unit]}` });
+    }
   });
   return itemsToAdd;
 }
@@ -4297,7 +4490,7 @@ function attachDoneFlow(recipe){
 }
 
 function finishRecipe(usedUpValues, shareResult){
-  if (loadSettings().antiWaste) {
+  if (isAntiWasteActive()) {
     const expiry = loadExpiryDates();
     let saved = 0;
     usedUpValues.forEach(v => {
@@ -4473,7 +4666,7 @@ let customRecipeFilters = { mealType: null, temperature: null, equipment: new Se
 function newCustomRecipeDraft(){
   return {
     title: "",
-    ingredients: [{ measure: "", name: "" }],
+    ingredients: [{ measure: "", name: "", amount: "", unit: "" }],
     steps: [{ text: "", timerMinutes: null }],
     difficulty: null,
     prepMinutes: "",
@@ -4491,11 +4684,19 @@ function renderCustomRecipeFormHTML(draft){
       <input type="text" id="customRecipeTitle" class="search-input" placeholder="Titre de la recette" maxlength="80" value="${escAttr(draft.title)}">
 
       <h4>Ingrédients</h4>
+      <p class="hint" style="margin-top:-6px;">La quantité précise (facultative) permet à FoodMe de comparer avec ton frigo (fonctionnalité Premium).</p>
       ${draft.ingredients.map((ing, i) => `
         <div class="dyn-row" data-idx="${i}">
           <input type="text" class="search-input ing-measure" data-idx="${i}" placeholder="Qté (ex : 200g)" value="${escAttr(ing.measure)}">
           <input type="text" class="search-input ing-name" data-idx="${i}" placeholder="Ingrédient" value="${escAttr(ing.name)}">
           ${draft.ingredients.length > 1 ? `<button type="button" class="dyn-remove" data-type="ingredient" data-idx="${i}" aria-label="Supprimer cet ingrédient">✕</button>` : ""}
+        </div>
+        <div class="dyn-row ing-precise-row" data-idx="${i}">
+          <input type="number" min="0" step="0.1" class="ing-amount" data-idx="${i}" placeholder="Quantité précise (facultatif)" value="${escAttr(ing.amount)}">
+          <select class="ing-unit" data-idx="${i}">
+            <option value="">Unité</option>
+            ${Object.entries(QUANTITY_UNITS).map(([k, lbl]) => `<option value="${k}"${ing.unit === k ? " selected" : ""}>${lbl}</option>`).join("")}
+          </select>
         </div>
       `).join("")}
       <button type="button" class="add-recipe-btn" id="addIngredientRow">+ Ajouter un ingrédient</button>
@@ -4571,8 +4772,14 @@ function attachCustomRecipeFormListeners(){
   document.querySelectorAll(".ing-name").forEach(el => {
     el.addEventListener("input", e => { draft.ingredients[Number(e.target.dataset.idx)].name = e.target.value; });
   });
+  document.querySelectorAll(".ing-amount").forEach(el => {
+    el.addEventListener("input", e => { draft.ingredients[Number(e.target.dataset.idx)].amount = e.target.value; });
+  });
+  document.querySelectorAll(".ing-unit").forEach(el => {
+    el.addEventListener("change", e => { draft.ingredients[Number(e.target.dataset.idx)].unit = e.target.value; });
+  });
   document.getElementById("addIngredientRow").addEventListener("click", () => {
-    draft.ingredients.push({ measure: "", name: "" });
+    draft.ingredients.push({ measure: "", name: "", amount: "", unit: "" });
     renderCustomRecipes();
   });
   document.querySelectorAll('.dyn-remove[data-type="ingredient"]').forEach(btn => {
@@ -4782,7 +4989,11 @@ function saveNewCustomRecipe(){
   const errorEl = document.getElementById("customRecipeError");
   const title = draft.title.trim();
   const ingredients = draft.ingredients
-    .map(i => ({ measure: i.measure.trim(), name: i.name.trim() }))
+    .map(i => ({
+      measure: i.measure.trim(), name: i.name.trim(),
+      amount: (i.amount !== "" && i.unit) ? Number(i.amount) : null,
+      unit: (i.amount !== "" && i.unit) ? i.unit : null
+    }))
     .filter(i => i.name);
   const steps = draft.steps
     .map(s => ({ text: s.text.trim(), timerSeconds: s.timerMinutes ? Math.round(s.timerMinutes * 60) : null }))
@@ -4811,6 +5022,32 @@ function saveNewCustomRecipe(){
   customRecipeFormOpen = false;
   customRecipeDraft = null;
   renderCustomRecipes();
+}
+
+// Bloc "selon ton stock" affiché sur une fiche recette perso : compare les quantités précisées
+// à la création de la recette au stock du frigo (fonctionnalité Premium, recettes perso uniquement).
+function renderStockCheckHTML(recipe, servings){
+  if (!isQuantitiesActive()) return "";
+  const { quantifiedCount, shortages } = computeStockFeasibility(recipe, servings);
+  if (quantifiedCount === 0) return "";
+  return `
+    <div class="stock-check-box">
+      <div class="settings-label" style="margin-bottom:6px;">📏 Selon ton stock actuel</div>
+      ${shortages.length === 0
+        ? `<div class="match ok">✅ Tu as assez pour ${servings} personne${servings > 1 ? "s" : ""}</div>`
+        : `<div class="match">Il te manque, pour ${servings} personne${servings > 1 ? "s" : ""} : ${shortages.map(s => `${s.amount}${QUANTITY_UNITS[s.unit]} de ${translateIngredient(s.name)}`).join(", ")}</div>
+           <button type="button" class="rate-taste-btn" id="addStockShortageToListBtn">🛒 Ajouter uniquement ce qu'il manque</button>`}
+    </div>`;
+}
+function attachStockCheckListeners(container, recipe, servings){
+  const btn = container.querySelector("#addStockShortageToListBtn");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    const { shortages } = computeStockFeasibility(recipe, servings);
+    addToShoppingList(shortages.map(s => ({ name: s.name, measure: `${s.amount}${QUANTITY_UNITS[s.unit]}` })));
+    btn.textContent = "✅ Ajoutés à la liste de courses";
+    btn.disabled = true;
+  });
 }
 
 function formatCustomStepText(text){
@@ -4865,7 +5102,7 @@ async function showCustomRecipeDetail(id, returnTo){
 
   const missing = recipe.ingredients.filter(({ name }) => {
     const n = normalize(name);
-    return name && !isBasic(n) && !Array.from(selected).some(v => ingredientNamesMatch(name, v));
+    return name && !isBasic(n) && !ingredientInFridge(name, Array.from(selected));
   });
 
   let servings = BASE_SERVINGS;
@@ -4906,6 +5143,7 @@ async function showCustomRecipeDetail(id, returnTo){
         <button type="button" id="servingsPlus" aria-label="Plus de portions">+</button>
         <span>personnes</span>
       </div>
+      <div id="stockCheckBox">${renderStockCheckHTML(recipe, servings)}</div>
       <button type="button" class="week-add-detail-btn${isInWeek(recipe.id) ? " added" : ""}" id="weekAddDetailBtn">${isInWeek(recipe.id) ? "✅ Dans ma semaine (retirer)" : "📅 Ajouter à ma semaine"}</button>
       <h4>Ingrédients</h4>
       <ul id="ingredientsList">${renderIngredientsHTML(recipe, servings)}</ul>
@@ -4948,13 +5186,16 @@ async function showCustomRecipeDetail(id, returnTo){
   attachDoneFlow(recipe);
   const ingredientsListEl = document.getElementById("ingredientsList");
   const servingsCountEl = document.getElementById("servingsCount");
+  const stockCheckBoxEl = document.getElementById("stockCheckBox");
   const updateServings = (delta) => {
     servings = Math.max(1, Math.min(20, servings + delta));
     servingsCountEl.textContent = servings;
     ingredientsListEl.innerHTML = renderIngredientsHTML(recipe, servings);
+    if (stockCheckBoxEl) { stockCheckBoxEl.innerHTML = renderStockCheckHTML(recipe, servings); attachStockCheckListeners(stockCheckBoxEl, recipe, servings); }
   };
   document.getElementById("servingsMinus").addEventListener("click", () => updateServings(-1));
   document.getElementById("servingsPlus").addEventListener("click", () => updateServings(1));
+  if (stockCheckBoxEl) attachStockCheckListeners(stockCheckBoxEl, recipe, servings);
   const addMissingBtn = document.getElementById("addMissingToListBtn");
   if (addMissingBtn) {
     addMissingBtn.addEventListener("click", () => {
@@ -5126,13 +5367,35 @@ async function performAccountDeletion(){
   }
 }
 
-function renderParametres(){
-  document.getElementById("darkModeToggle").checked = loadSettings().theme === "dark";
-  document.getElementById("antiWasteToggle").checked = loadSettings().antiWaste;
+function renderPremium(){
+  const settings = loadSettings();
+  document.getElementById("premiumActiveToggle").checked = settings.premiumActive;
+  document.getElementById("antiWasteToggle").checked = settings.antiWaste;
+  document.getElementById("quantitiesActiveToggle").checked = settings.quantitiesActive;
+  document.getElementById("premiumFeaturesList").classList.toggle("disabled", !settings.premiumActive);
+
   const statsEl = document.getElementById("wasteStats");
   const count = getWasteSavedCount();
   statsEl.hidden = count === 0;
   statsEl.textContent = `🎉 ${count} ingrédient${count > 1 ? "s" : ""} sauvé${count > 1 ? "s" : ""} du gaspillage`;
+}
+document.getElementById("premiumActiveToggle").addEventListener("change", (e) => {
+  const s = loadSettings();
+  s.premiumActive = e.target.checked;
+  saveSettings(s);
+  renderPremium();
+  refreshPremiumDependentViews();
+});
+document.getElementById("quantitiesActiveToggle").addEventListener("change", (e) => {
+  const s = loadSettings();
+  s.quantitiesActive = e.target.checked;
+  saveSettings(s);
+  updateFridgeSummary();
+  refreshPremiumDependentViews();
+});
+
+function renderParametres(){
+  document.getElementById("darkModeToggle").checked = loadSettings().theme === "dark";
 
   const profilBlock = document.getElementById("parametresProfil");
   profilBlock.hidden = !currentUser;
@@ -5162,13 +5425,20 @@ document.getElementById("antiWasteToggle").addEventListener("change", (e) => {
   const s = loadSettings();
   s.antiWaste = e.target.checked;
   saveSettings(s);
-  updateFridgeSummary();
   // Le tri "Périssable en priorité" ne fait sens qu'avec l'anti-gaspillage actif : on le pose comme
   // nouveau tri par défaut à l'activation, et on repasse sur "Faisabilité" à la désactivation.
-  cuisinerSort = e.target.checked ? "perissable" : "faisabilite";
+  cuisinerSort = isAntiWasteActive() ? "perissable" : "faisabilite";
+  refreshPremiumDependentViews();
+});
+// Recalcule les écrans dont l'affichage dépend de l'anti-gaspillage (frigo, cuisiner, mes plats),
+// appelé à chaque changement de l'état Premium ou de la case anti-gaspillage elle-même.
+function refreshPremiumDependentViews(){
+  updateFridgeSummary();
   const cuisinerView = document.getElementById("view-cuisiner");
   if (cuisinerView && !cuisinerView.hidden) renderRecipeResults();
-});
+  const mesplatsView = document.getElementById("view-mesplats");
+  if (mesplatsView && !mesplatsView.hidden) renderMesPlats();
+}
 document.getElementById("privateAccountToggle").addEventListener("change", async (e) => {
   if (!sb || !currentUser) return;
   const isPrivate = e.target.checked;
@@ -5227,6 +5497,7 @@ function showSecondaryView(id, param){
   else {
     releaseWakeLock();
     if (id === "parametres") renderParametres();
+    else if (id === "premium") renderPremium();
     else if (id === "profil") renderProfilView(param);
     else if (id === "semaine") renderSemaine();
     else if (id === "hashtag") renderHashtagView(param);
