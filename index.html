@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+<script>
+  // Applique le mode sombre avant le premier affichage, pour éviter un flash de thème clair
+  try {
+    var s = JSON.parse(localStorage.getItem("foodme_settings") || "{}");
+    if (s.theme === "dark") document.documentElement.dataset.theme = "dark";
+  } catch (e) {}
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -39,6 +46,25 @@
     --font-display:'Fraunces',Georgia,serif;
     --font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
     --font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  }
+  html[data-theme="dark"]{
+    --bg:#1C1815;
+    --surface:#241F1A;
+    --surface-2:#2C2620;
+    --ink:#F0E9DD;
+    --ink-dim:#A99C89;
+    --line:#3A332B;
+    --tomato:#E8623F;
+    --tomato-dark:#F0805F;
+    --tomato-tint:#3A211B;
+    --basil:#6FA873;
+    --basil-ink:#C9E3CB;
+    --basil-tint:#23301F;
+    --saffron:#E8AC4C;
+    --saffron-ink:#F5D89A;
+    --saffron-tint:#3A2C13;
+    --danger:#E2584A;
+    --shadow:0 2px 10px rgba(0,0,0,.4),0 1px 2px rgba(0,0,0,.3);
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   [hidden]{display:none !important;} /* garantit que hidden gagne toujours, même sur des éléments avec display:flex */
@@ -154,6 +180,25 @@
     font-weight:600;
   }
   #selectedCount{font-weight:400;opacity:.85;}
+  .custom-recipe-filters{margin:12px 0;}
+  .filter-chip.filter-reset{background:none;border-style:dashed;color:var(--ink-dim);}
+  /* Filtres façon "menu déroulant" (boutique en ligne) : un bouton compact ouvre un petit panneau d'options */
+  .filter-dropdown-row{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin:10px 0;}
+  .filter-dropdown{position:relative;}
+  .filter-dropdown-trigger{
+    border:1px solid var(--line);background:var(--surface);color:var(--ink);font-family:var(--font-body);
+    padding:9px 14px;border-radius:999px;font-size:14px;font-weight:500;cursor:pointer;
+    display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
+  }
+  .filter-dropdown-trigger .caret{font-size:10px;opacity:.7;}
+  .filter-dropdown-trigger.active{background:var(--basil-tint);border-color:var(--basil);color:var(--basil-ink);font-weight:600;}
+  .filter-dropdown-panel{
+    position:absolute;top:calc(100% + 6px);left:0;z-index:30;background:var(--surface);border:1px solid var(--line);
+    border-radius:14px;box-shadow:var(--shadow);padding:12px;min-width:220px;max-width:min(320px, 80vw);
+    display:none;flex-wrap:wrap;gap:8px;
+  }
+  .filter-dropdown.open .filter-dropdown-panel{display:flex;}
+  .filter-dropdown-panel .chip,.filter-dropdown-panel .sort-btn{padding:8px 12px;font-size:13px;}
   #results{margin-top:8px;}
   .state-msg{
     text-align:center;
@@ -162,6 +207,11 @@
     padding:30px 20px;
     line-height:1.6;
   }
+  .urgent-header{
+    font-size:12.5px;font-weight:700;color:var(--tomato-dark);margin:14px 0 8px;
+    text-transform:uppercase;letter-spacing:0.02em;
+  }
+  .urgent-header.rest{color:var(--ink-dim);font-weight:600;text-transform:none;letter-spacing:normal;}
   .recipe-card{
     position:relative;
     display:flex;
@@ -560,6 +610,14 @@
   .modal-card .search-input{margin-bottom:16px;}
   .modal-actions{display:flex;gap:10px;}
   .modal-actions button{flex:1;margin:0;}
+  .crop-viewport{
+    position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;border-radius:12px;
+    background:var(--surface-2);touch-action:none;cursor:grab;margin-bottom:14px;
+  }
+  .crop-viewport.dragging{cursor:grabbing;}
+  .crop-viewport img{position:absolute;top:0;left:0;transform-origin:0 0;user-select:none;pointer-events:none;max-width:none;}
+  .crop-zoom-row{display:flex;align-items:center;gap:10px;}
+  .crop-zoom-row input[type="range"]{flex:1;}
   .auth-error{color:var(--danger);font-size:13px;margin-top:10px;}
   .auth-info{color:var(--basil-ink);background:var(--basil-tint);padding:10px 12px;border-radius:10px;font-size:13px;margin-top:10px;line-height:1.5;}
   .avatar-row{display:flex;align-items:center;gap:12px;}
@@ -576,6 +634,16 @@
   .profile-posts-section{margin-top:20px;}
   .profile-posts-section h3{font-family:var(--font-display);font-weight:600;font-size:15px;margin-bottom:10px;}
   .feed-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px;}
+  @keyframes skel-shimmer{0%{background-position:-200px 0;}100%{background-position:calc(200px + 100%) 0;}}
+  .skel-block{background:linear-gradient(90deg, var(--surface-2) 25%, var(--line) 37%, var(--surface-2) 63%);background-size:400px 100%;animation:skel-shimmer 1.4s ease-in-out infinite;border-radius:8px;}
+  .skel-feed-card{display:flex;flex-direction:column;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px;}
+  .skel-feed-header{display:flex;align-items:center;gap:10px;}
+  .skel-avatar{width:38px;height:38px;border-radius:50%;flex-shrink:0;}
+  .skel-line{height:12px;}
+  .skel-feed-img{height:180px;width:100%;}
+  .skel-recipe-card{display:flex;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px;}
+  .skel-recipe-img{width:84px;height:84px;flex-shrink:0;}
+  .skel-recipe-info{flex:1;display:flex;flex-direction:column;gap:8px;justify-content:center;}
   .feed-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
   .feed-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--font-display);font-weight:700;font-size:14px;flex-shrink:0;}
   .feed-header-info{flex:1;min-width:0;}
@@ -642,6 +710,24 @@
   <div class="modal-card" id="deleteAccountCard"></div>
 </div>
 
+<div id="cropOverlay" class="modal-overlay" hidden>
+  <div class="modal-card" style="max-width:360px;">
+    <h3 style="margin-top:0;">Ajuste ta photo</h3>
+    <div class="crop-viewport" id="cropViewport">
+      <img id="cropImg" alt="" draggable="false">
+    </div>
+    <div class="crop-zoom-row">
+      <span aria-hidden="true">🔍</span>
+      <input type="range" id="cropZoomRange" min="1" max="3" step="0.01" value="1">
+    </div>
+    <p class="hint" style="margin:6px 0 14px;">Fais glisser la photo pour la repositionner, utilise le curseur pour zoomer.</p>
+    <div class="modal-actions">
+      <button type="button" class="rate-taste-btn" id="cropCancelBtn">Annuler</button>
+      <button type="button" class="primary-btn" id="cropConfirmBtn">Valider</button>
+    </div>
+  </div>
+</div>
+
 <header>
   <div class="header-top">
     <h1>🍽️ FoodMe</h1>
@@ -698,16 +784,19 @@
 </main>
 
 <main id="view-liste" class="view" hidden>
+  <button type="button" class="back-btn secondary-back-btn">← Retour</button>
   <div id="listeCoursesContent"></div>
 </main>
 
 <main id="view-semaine" class="view" hidden>
+  <button type="button" class="back-btn secondary-back-btn">← Retour</button>
   <h2 style="margin-top:0;">Ma semaine</h2>
   <p class="hint" style="margin-top:-8px;">Choisis les recettes que tu comptes cuisiner cette semaine, puis ajoute tous leurs ingrédients à ta liste de courses en une fois.</p>
   <div id="semaineContent"></div>
 </main>
 
 <main id="view-parametres" class="view" hidden>
+  <button type="button" class="back-btn secondary-back-btn">← Retour</button>
   <h2 style="margin-top:0;">Paramètres</h2>
   <div id="parametresProfil" hidden>
     <h3 style="margin-top:0;">Mon profil</h3>
@@ -744,6 +833,16 @@
         </div>
       </div>
     </div>
+  </div>
+  <div class="settings-row" style="margin-top:22px;">
+    <div>
+      <div class="settings-label">🌙 Mode sombre</div>
+      <div class="settings-desc">Change l'apparence de l'application pour un fond sombre, plus confortable en soirée.</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="darkModeToggle">
+      <span class="switch-slider"></span>
+    </label>
   </div>
   <div class="settings-row" style="margin-top:22px;">
     <div>
@@ -827,6 +926,7 @@
 </main>
 
 <main id="view-profil" class="view" hidden>
+  <button type="button" class="back-btn secondary-back-btn">← Retour</button>
   <div id="profilLoggedOut" class="state-msg" hidden>Connecte-toi depuis l'onglet Communauté pour accéder à ton profil.</div>
   <div id="profilLoggedIn" hidden>
     <div class="auth-card">
@@ -853,6 +953,7 @@
 </main>
 
 <main id="view-enregistrees" class="view" hidden>
+  <button type="button" class="back-btn secondary-back-btn">← Retour</button>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
     <h2 style="margin:0;">🔖 Recettes enregistrées</h2>
     <button type="button" id="newFolderFromScreenBtn" class="rate-taste-btn" style="width:auto;padding:8px 14px;white-space:nowrap;">+ Dossier</button>
@@ -861,6 +962,7 @@
 </main>
 
 <main id="view-bilan" class="view" hidden>
+  <button type="button" class="back-btn secondary-back-btn">← Retour</button>
   <h2 style="margin:0 0 14px;">📊 Bilan</h2>
   <div class="feed-mode-toggle" id="bilanPeriodTabs">
     <button type="button" class="feed-mode-btn selected" data-period="semaine">Cette semaine</button>
@@ -1176,7 +1278,7 @@ async function toggleFollow(targetId, isPrivate, btn){
 async function loadProfilePosts(userId){
   const feedEl = document.getElementById("profilePostsFeed");
   const statPosts = document.getElementById("statPosts");
-  feedEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Chargement…</div>`;
+  feedEl.innerHTML = feedSkeletonHTML(2);
   if (!sb) return;
   try {
     const { data, error } = await sb
@@ -1215,7 +1317,7 @@ function renderHashtagView(tag){
 }
 async function loadHashtagPosts(tag){
   const feedEl = document.getElementById("hashtagPostsFeed");
-  feedEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Chargement…</div>`;
+  feedEl.innerHTML = feedSkeletonHTML(2);
   if (!sb) return;
   try {
     const { data: links, error: linksError } = await sb
@@ -1557,7 +1659,7 @@ async function fetchDecouvrirPosts(){
 async function loadFeed(attempt = 1){
   const container = document.getElementById("feedContainer");
   if (!container || !sb) return;
-  container.innerHTML = `<div class="state-msg"><div class="spinner"></div>Chargement du fil…</div>`;
+  container.innerHTML = feedSkeletonHTML(3);
   try {
     let posts;
     if (feedMode === "decouvrir") {
@@ -1592,6 +1694,35 @@ async function loadFeed(attempt = 1){
 }
 
 // ---- Date façon réseau social : "Aujourd'hui à 14:32", "Hier à 09:10", sinon la date ----
+// ---- Écrans de chargement "silhouette" : évite le clignotement d'un simple spinner sur les listes ----
+function feedSkeletonHTML(count = 3){
+  return Array.from({ length: count }, () => `
+    <div class="skel-feed-card">
+      <div class="skel-feed-header">
+        <div class="skel-block skel-avatar"></div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px;">
+          <div class="skel-block skel-line" style="width:40%;"></div>
+          <div class="skel-block skel-line" style="width:25%;height:9px;"></div>
+        </div>
+      </div>
+      <div class="skel-block skel-feed-img"></div>
+      <div class="skel-block skel-line" style="width:70%;"></div>
+    </div>
+  `).join("");
+}
+function recipeSkeletonHTML(count = 4){
+  return Array.from({ length: count }, () => `
+    <div class="skel-recipe-card">
+      <div class="skel-block skel-recipe-img"></div>
+      <div class="skel-recipe-info">
+        <div class="skel-block skel-line" style="width:75%;"></div>
+        <div class="skel-block skel-line" style="width:50%;height:10px;"></div>
+        <div class="skel-block skel-line" style="width:60%;height:10px;"></div>
+      </div>
+    </div>
+  `).join("");
+}
+
 function formatFeedDate(dateStr){
   const d = new Date(dateStr);
   const now = new Date();
@@ -2909,29 +3040,60 @@ function renderRecipeResults(){
   } else {
     sorted.sort((a, b) => a.missing.length - b.missing.length || a.totalIngredients - b.totalIngredients);
   }
+  // Anti-gaspi : quel que soit le tri choisi, une recette utilisant un ingrédient bientôt périmé
+  // (≤ 3 jours, même seuil que l'avertissement ⚠️ affiché sur les ingrédients) remonte toujours en tête.
+  const URGENT_EXPIRY_DAYS = 3;
+  let urgentCount = 0;
+  if (antiWaste && cuisinerSort !== "perissable") {
+    const urgent = sorted.filter(r => r.soonestExpiryDays !== null && r.soonestExpiryDays <= URGENT_EXPIRY_DAYS);
+    if (urgent.length > 0) {
+      const urgentIds = new Set(urgent.map(r => r.recipe.id));
+      const rest = sorted.filter(r => !urgentIds.has(r.recipe.id));
+      urgent.sort((a, b) => a.soonestExpiryDays - b.soonestExpiryDays);
+      sorted.splice(0, sorted.length, ...urgent, ...rest);
+      urgentCount = urgent.length;
+    }
+  }
 
-  const sourceBar = hasCommunity ? `
-    <div class="sort-bar">
-      ${Object.entries(CUISINER_SOURCE_LABELS).map(([key, label]) =>
-        `<button type="button" class="sort-btn${cuisinerSource === key ? " selected" : ""}" data-source="${key}">${label}</button>`
-      ).join("")}
-    </div>` : "";
   const sortKeys = antiWaste && lastSearchResults.some(r => r.soonestExpiryDays !== null)
     ? Object.keys(CUISINER_SORT_LABELS) : Object.keys(CUISINER_SORT_LABELS).filter(k => k !== "perissable");
-  const sortBar = `
-    <div class="sort-bar">
-      ${sortKeys.map(key =>
-        `<button type="button" class="sort-btn${cuisinerSort === key ? " selected" : ""}" data-sort="${key}">${CUISINER_SORT_LABELS[key]}</button>`
-      ).join("")}
-    </div>`;
   const areas = Array.from(new Set(lastSearchResults.map(r => r.recipe.area).filter(Boolean)))
     .sort((a, b) => translateOrigin(a).localeCompare(translateOrigin(b), "fr"));
+
+  // Filtres regroupés en menus déroulants compacts (au lieu de plusieurs lignes de puces) pour ne pas surcharger l'écran
+  const sourceDropdown = hasCommunity ? `
+    <div class="filter-dropdown${openFilterKeys.cuisiner === "source" ? " open" : ""}" data-filter-group="cuisiner" data-filter-key="source">
+      <button type="button" class="filter-dropdown-trigger${cuisinerSource !== "toutes" ? " active" : ""}">Recettes<span class="caret">▾</span></button>
+      <div class="filter-dropdown-panel">
+        ${Object.entries(CUISINER_SOURCE_LABELS).map(([key, label]) =>
+          `<button type="button" class="sort-btn${cuisinerSource === key ? " selected" : ""}" data-source="${key}">${label}</button>`
+        ).join("")}
+      </div>
+    </div>` : "";
+  const sortDropdown = `
+    <div class="filter-dropdown${openFilterKeys.cuisiner === "sort" ? " open" : ""}" data-filter-group="cuisiner" data-filter-key="sort">
+      <button type="button" class="filter-dropdown-trigger active">${CUISINER_SORT_LABELS[cuisinerSort]}<span class="caret">▾</span></button>
+      <div class="filter-dropdown-panel">
+        ${sortKeys.map(key =>
+          `<button type="button" class="sort-btn${cuisinerSort === key ? " selected" : ""}" data-sort="${key}">${CUISINER_SORT_LABELS[key]}</button>`
+        ).join("")}
+      </div>
+    </div>`;
+  const dietDropdown = `
+    <div class="filter-dropdown${openFilterKeys.cuisiner === "diet" ? " open" : ""}" data-filter-group="cuisiner" data-filter-key="diet">
+      <button type="button" class="filter-dropdown-trigger${dietFilter !== "tous" ? " active" : ""}">${dietFilter !== "tous" ? DIET_LABELS[dietFilter] : "Régime"}<span class="caret">▾</span></button>
+      <div class="filter-dropdown-panel">
+        ${Object.entries(DIET_LABELS).map(([key, label]) =>
+          `<button type="button" class="sort-btn${dietFilter === key ? " selected" : ""}" data-diet="${key}">${label}</button>`
+        ).join("")}
+      </div>
+    </div>`;
   const filterBar = `
-    <div class="sort-bar">
-      ${Object.entries(DIET_LABELS).map(([key, label]) =>
-        `<button type="button" class="sort-btn${dietFilter === key ? " selected" : ""}" data-diet="${key}">${label}</button>`
-      ).join("")}
-      ${antiWaste ? `<button type="button" class="sort-btn${expiringOnly ? " selected" : ""}" data-expiring="1">⚠️ Bientôt périmé</button>` : ""}
+    <div class="filter-dropdown-row">
+      ${sortDropdown}
+      ${sourceDropdown}
+      ${dietDropdown}
+      ${antiWaste ? `<button type="button" class="filter-dropdown-trigger${expiringOnly ? " active" : ""}" data-expiring="1">⚠️ Bientôt périmé</button>` : ""}
       ${areas.length > 0 ? `
         <select class="origin-select${areaFilter !== "toutes" ? " selected" : ""}" id="originSelect" aria-label="Filtrer par origine">
           <option value="toutes">🌍 Toutes origines</option>
@@ -2940,9 +3102,11 @@ function renderRecipeResults(){
     </div>`;
 
   if (sorted.length === 0) {
-    resultsEl.innerHTML = sourceBar + sortBar + filterBar + `<div class="state-msg">Aucune recette ne correspond à ce filtre 😕</div>`;
+    resultsEl.innerHTML = filterBar + `<div class="state-msg">Aucune recette ne correspond à ce filtre 😕</div>`;
   } else {
-    resultsEl.innerHTML = sourceBar + sortBar + filterBar + sorted.map(r => `
+    resultsEl.innerHTML = filterBar + sorted.map((r, i) => `
+      ${i === 0 && urgentCount > 0 ? `<div class="urgent-header">⚡ À utiliser en priorité</div>` : ""}
+      ${i === urgentCount && urgentCount > 0 && urgentCount < sorted.length ? `<div class="urgent-header rest">Reste des résultats</div>` : ""}
       <div class="recipe-card" data-id="${r.recipe.id}">
         <button type="button" class="week-add-card-btn${isInWeek(r.recipe.id) ? " added" : ""}" data-action="toggle-week" aria-label="Ajouter à ma semaine">📅</button>
         ${r.isCustom
@@ -2976,7 +3140,7 @@ function renderRecipeResults(){
   resultsEl.querySelectorAll(".sort-btn[data-diet]").forEach(btn => {
     btn.addEventListener("click", () => { dietFilter = btn.dataset.diet; renderRecipeResults(); });
   });
-  resultsEl.querySelectorAll(".sort-btn[data-expiring]").forEach(btn => {
+  resultsEl.querySelectorAll("[data-expiring]").forEach(btn => {
     btn.addEventListener("click", () => { expiringOnly = !expiringOnly; renderRecipeResults(); });
   });
   const originSelect = document.getElementById("originSelect");
@@ -3032,7 +3196,7 @@ async function fetchCommunityCustomResults(ingredients, titleQuery){
 // ---- Recherche de recettes 100% faisables (ou presque) avec ce qu'on a ----
 async function searchRecipes(){
   const resultsEl = document.getElementById("results");
-  resultsEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Recherche en cours…</div>`;
+  resultsEl.innerHTML = recipeSkeletonHTML();
   cuisinerSource = "toutes";
 
   const ingredients = Array.from(selected);
@@ -3126,7 +3290,7 @@ async function scoreAndTranslate(meals, ingredients){
 // ---- Recherche d'une recette par son nom (indépendante des ingrédients du frigo) ----
 async function searchRecipeByName(query){
   const resultsEl = document.getElementById("results");
-  resultsEl.innerHTML = `<div class="state-msg"><div class="spinner"></div>Recherche en cours…</div>`;
+  resultsEl.innerHTML = recipeSkeletonHTML();
   cuisinerSource = "toutes";
   const ingredients = Array.from(selected);
   try {
@@ -3852,6 +4016,89 @@ async function resizePhoto(file, maxWidth){
   });
 }
 
+// ---- Recadrage/zoom manuel d'une photo avant publication : glisser pour repositionner, curseur pour zoomer ----
+function openPhotoCropper(dataUrl){
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("cropOverlay");
+    const viewport = document.getElementById("cropViewport");
+    const img = document.getElementById("cropImg");
+    const zoomRange = document.getElementById("cropZoomRange");
+    const cancelBtn = document.getElementById("cropCancelBtn");
+    const confirmBtn = document.getElementById("cropConfirmBtn");
+
+    let baseScale = 1, zoom = 1, tx = 0, ty = 0, natW = 0, natH = 0;
+    let dragging = false, startX = 0, startY = 0, startTx = 0, startTy = 0;
+
+    function applyTransform(){ img.style.transform = `translate(${tx}px, ${ty}px) scale(${baseScale * zoom})`; }
+    function clamp(){
+      const scale = baseScale * zoom;
+      const dispW = natW * scale, dispH = natH * scale;
+      const vw = viewport.clientWidth, vh = viewport.clientHeight;
+      tx = Math.min(0, Math.max(Math.min(0, vw - dispW), tx));
+      ty = Math.min(0, Math.max(Math.min(0, vh - dispH), ty));
+    }
+    function onPointerDown(e){
+      dragging = true;
+      viewport.classList.add("dragging");
+      startX = e.clientX; startY = e.clientY; startTx = tx; startTy = ty;
+      viewport.setPointerCapture(e.pointerId);
+    }
+    function onPointerMove(e){
+      if (!dragging) return;
+      tx = startTx + (e.clientX - startX);
+      ty = startTy + (e.clientY - startY);
+      clamp();
+      applyTransform();
+    }
+    function onPointerUp(){ dragging = false; viewport.classList.remove("dragging"); }
+    function onZoomInput(){ zoom = Number(zoomRange.value); clamp(); applyTransform(); }
+    function cleanup(){
+      overlay.hidden = true;
+      viewport.removeEventListener("pointerdown", onPointerDown);
+      viewport.removeEventListener("pointermove", onPointerMove);
+      viewport.removeEventListener("pointerup", onPointerUp);
+      viewport.removeEventListener("pointercancel", onPointerUp);
+      zoomRange.removeEventListener("input", onZoomInput);
+      cancelBtn.removeEventListener("click", onCancel);
+      confirmBtn.removeEventListener("click", onConfirm);
+    }
+    function onCancel(){ cleanup(); resolve(null); }
+    function onConfirm(){
+      const vw = viewport.clientWidth, vh = viewport.clientHeight;
+      const OUTPUT_W = 900;
+      const OUTPUT_H = Math.round(OUTPUT_W * (vh / vw));
+      const outputScale = OUTPUT_W / vw;
+      const scale = baseScale * zoom;
+      const canvas = document.createElement("canvas");
+      canvas.width = OUTPUT_W; canvas.height = OUTPUT_H;
+      canvas.getContext("2d").drawImage(img, tx * outputScale, ty * outputScale, natW * scale * outputScale, natH * scale * outputScale);
+      cleanup();
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    }
+
+    img.onload = () => {
+      natW = img.naturalWidth; natH = img.naturalHeight;
+      const vw = viewport.clientWidth, vh = viewport.clientHeight;
+      baseScale = Math.max(vw / natW, vh / natH);
+      zoom = 1; zoomRange.value = 1;
+      tx = (vw - natW * baseScale) / 2;
+      ty = (vh - natH * baseScale) / 2;
+      applyTransform();
+    };
+    img.src = dataUrl;
+
+    viewport.addEventListener("pointerdown", onPointerDown);
+    viewport.addEventListener("pointermove", onPointerMove);
+    viewport.addEventListener("pointerup", onPointerUp);
+    viewport.addEventListener("pointercancel", onPointerUp);
+    zoomRange.addEventListener("input", onZoomInput);
+    cancelBtn.addEventListener("click", onCancel);
+    confirmBtn.addEventListener("click", onConfirm);
+
+    overlay.hidden = false;
+  });
+}
+
 // ---- Nombre de fois qu'une recette a été cuisinée (compteur anonyme, cf. increment_cook_count) ----
 async function fetchCookCount(recipeId){
   if (!sb) return null;
@@ -3894,6 +4141,7 @@ function attachDoneFlow(recipe){
         <input type="file" id="donePhotoInput" accept="image/*" capture="environment" hidden>
         <div id="photoPreviewWrap" class="photo-preview-wrap" hidden>
           <img id="photoPreview" alt="">
+          <button type="button" id="recropPhotoBtn" aria-label="Recadrer la photo" style="right:38px;">✂️</button>
           <button type="button" id="removePhotoBtn" aria-label="Retirer la photo">✕</button>
         </div>
         <button type="button" id="choosePhotoBtn" class="photo-btn">📷 Ajouter une photo</button>
@@ -3964,20 +4212,22 @@ function attachDoneFlow(recipe){
         }
       });
     }
-    const shareGalleryInput = document.getElementById("shareGalleryInput");
-    const shareCameraInput = document.getElementById("shareCameraInput");
-    document.getElementById("shareGalleryBtn").addEventListener("click", () => shareGalleryInput.click());
-    document.getElementById("shareCameraBtn").addEventListener("click", () => shareCameraInput.click());
-    async function handleSharePhotoFile(input, source){
-      const file = input.files[0];
-      if (!file) return;
-      const dataUrl = await resizePhoto(file, 800);
-      if (dataUrl) { sharePhoto = { mode: "custom", dataUrl, source }; updateSharePhotoUI(); }
+    if (currentUser) {
+      const shareGalleryInput = document.getElementById("shareGalleryInput");
+      const shareCameraInput = document.getElementById("shareCameraInput");
+      document.getElementById("shareGalleryBtn").addEventListener("click", () => shareGalleryInput.click());
+      document.getElementById("shareCameraBtn").addEventListener("click", () => shareCameraInput.click());
+      async function handleSharePhotoFile(input, source){
+        const file = input.files[0];
+        if (!file) return;
+        const dataUrl = await resizePhoto(file, 800);
+        if (dataUrl) { sharePhoto = { mode: "custom", dataUrl, source }; updateSharePhotoUI(); }
+      }
+      shareGalleryInput.addEventListener("change", () => handleSharePhotoFile(shareGalleryInput, "gallery"));
+      shareCameraInput.addEventListener("change", () => handleSharePhotoFile(shareCameraInput, "camera"));
+      shareChoiceBtns.recipe.addEventListener("click", () => { sharePhoto = { mode: "recipe", dataUrl: null }; updateSharePhotoUI(); });
+      shareChoiceBtns.none.addEventListener("click", () => { sharePhoto = { mode: "none", dataUrl: null }; updateSharePhotoUI(); });
     }
-    shareGalleryInput.addEventListener("change", () => handleSharePhotoFile(shareGalleryInput, "gallery"));
-    shareCameraInput.addEventListener("change", () => handleSharePhotoFile(shareCameraInput, "camera"));
-    shareChoiceBtns.recipe.addEventListener("click", () => { sharePhoto = { mode: "recipe", dataUrl: null }; updateSharePhotoUI(); });
-    shareChoiceBtns.none.addEventListener("click", () => { sharePhoto = { mode: "none", dataUrl: null }; updateSharePhotoUI(); });
     document.querySelectorAll("#difficultyPicker button").forEach(btn => {
       btn.addEventListener("click", () => {
         document.querySelectorAll("#difficultyPicker button").forEach(b => b.classList.remove("selected"));
@@ -3998,23 +4248,33 @@ function attachDoneFlow(recipe){
     const photoInput = document.getElementById("donePhotoInput");
     const photoPreviewWrap = document.getElementById("photoPreviewWrap");
     const photoPreview = document.getElementById("photoPreview");
+    let rawPhoto = null; // photo redimensionnée avant recadrage, conservée pour pouvoir recadrer à nouveau sans perte
     choosePhotoBtn.addEventListener("click", () => photoInput.click());
     photoInput.addEventListener("change", async () => {
       const file = photoInput.files[0];
       if (!file) return;
       choosePhotoBtn.textContent = "⏳ Traitement…";
-      const dataUrl = await resizePhoto(file, 600);
-      if (dataUrl) {
-        capturedPhoto = dataUrl;
-        photoPreview.src = dataUrl;
+      const dataUrl = await resizePhoto(file, 1000);
+      choosePhotoBtn.textContent = "📷 Ajouter une photo";
+      if (!dataUrl) return;
+      rawPhoto = dataUrl;
+      const cropped = await openPhotoCropper(dataUrl);
+      if (cropped) {
+        capturedPhoto = cropped;
+        photoPreview.src = cropped;
         photoPreviewWrap.hidden = false;
         choosePhotoBtn.hidden = true;
-      } else {
-        choosePhotoBtn.textContent = "📷 Ajouter une photo";
       }
+      photoInput.value = "";
+    });
+    document.getElementById("recropPhotoBtn").addEventListener("click", async () => {
+      if (!rawPhoto) return;
+      const cropped = await openPhotoCropper(rawPhoto);
+      if (cropped) { capturedPhoto = cropped; photoPreview.src = cropped; }
     });
     document.getElementById("removePhotoBtn").addEventListener("click", () => {
       capturedPhoto = null;
+      rawPhoto = null;
       photoInput.value = "";
       photoPreviewWrap.hidden = true;
       choosePhotoBtn.hidden = false;
@@ -4182,6 +4442,9 @@ async function syncCustomRecipeToCloud(recipe){
       difficulty: recipe.difficulty || null,
       prep_minutes: recipe.prepMinutes || null,
       total_minutes: recipe.totalMinutes || null,
+      meal_type: recipe.mealType || null,
+      temperature: recipe.temperature || null,
+      equipment: recipe.equipment || [],
       updated_at: new Date().toISOString()
     });
   } catch (e) { console.error("Sync recette perso :", e); }
@@ -4202,6 +4465,10 @@ function openRecipeDetail(id, returnTo){
 
 let customRecipeFormOpen = false;
 let customRecipeDraft = null;
+const CUSTOM_MEAL_TYPES = ["Entrée", "Plat", "Dessert", "Boisson"];
+const CUSTOM_EQUIPMENT_TAGS = ["Four", "Air fryer", "Gaufrier", "Machine à churros", "Barbecue", "Micro-ondes"];
+// Filtres appliqués à la liste "📝 Mes recettes" (état global, remis à zéro au rechargement de la page)
+let customRecipeFilters = { mealType: null, temperature: null, equipment: new Set() };
 
 function newCustomRecipeDraft(){
   return {
@@ -4211,7 +4478,10 @@ function newCustomRecipeDraft(){
     difficulty: null,
     prepMinutes: "",
     totalMinutes: "",
-    photo: null
+    photo: null,
+    mealType: null,
+    temperature: null,
+    equipment: []
   };
 }
 
@@ -4259,6 +4529,23 @@ function renderCustomRecipeFormHTML(draft){
       <div class="dyn-row" style="margin-top:10px;">
         <input type="number" min="0" max="600" id="customRecipePrep" class="search-input" placeholder="Prépa (min)" value="${escAttr(draft.prepMinutes)}">
         <input type="number" min="0" max="600" id="customRecipeTotal" class="search-input" placeholder="Total (min)" value="${escAttr(draft.totalMinutes)}">
+      </div>
+
+      <h4>Type de plat</h4>
+      <div class="chips" id="customMealTypePicker">
+        ${CUSTOM_MEAL_TYPES.map(t => `<button type="button" class="chip ${draft.mealType === t ? "selected" : ""}" data-value="${t}">${t}</button>`).join("")}
+      </div>
+
+      <h4>Température</h4>
+      <div class="chips" id="customTemperaturePicker">
+        <button type="button" class="chip ${draft.temperature === "Chaud" ? "selected" : ""}" data-value="Chaud">🔥 Chaud</button>
+        <button type="button" class="chip ${draft.temperature === "Froid" ? "selected" : ""}" data-value="Froid">❄️ Froid</button>
+      </div>
+
+      <h4>Équipement utilisé</h4>
+      <p class="hint" style="margin-top:-6px;">Facultatif — utile pour retrouver tes recettes selon l'appareil dont tu disposes.</p>
+      <div class="chips" id="customEquipmentPicker">
+        ${CUSTOM_EQUIPMENT_TAGS.map(eq => `<button type="button" class="chip ${draft.equipment.includes(eq) ? "selected" : ""}" data-value="${eq}">${eq}</button>`).join("")}
       </div>
 
       <h4>Photo</h4>
@@ -4336,6 +4623,27 @@ function attachCustomRecipeFormListeners(){
   document.getElementById("customRecipePrep").addEventListener("input", e => { draft.prepMinutes = e.target.value; });
   document.getElementById("customRecipeTotal").addEventListener("input", e => { draft.totalMinutes = e.target.value; });
 
+  document.querySelectorAll("#customMealTypePicker .chip").forEach(btn => {
+    btn.addEventListener("click", () => {
+      draft.mealType = draft.mealType === btn.dataset.value ? null : btn.dataset.value;
+      renderCustomRecipes();
+    });
+  });
+  document.querySelectorAll("#customTemperaturePicker .chip").forEach(btn => {
+    btn.addEventListener("click", () => {
+      draft.temperature = draft.temperature === btn.dataset.value ? null : btn.dataset.value;
+      renderCustomRecipes();
+    });
+  });
+  document.querySelectorAll("#customEquipmentPicker .chip").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const v = btn.dataset.value;
+      const i = draft.equipment.indexOf(v);
+      if (i === -1) draft.equipment.push(v); else draft.equipment.splice(i, 1);
+      renderCustomRecipes();
+    });
+  });
+
   const photoBtn = document.getElementById("customRecipePhotoBtn");
   if (photoBtn) photoBtn.addEventListener("click", () => document.getElementById("customRecipePhotoInput").click());
   document.getElementById("customRecipePhotoInput").addEventListener("change", async (e) => {
@@ -4350,12 +4658,25 @@ function attachCustomRecipeFormListeners(){
   document.getElementById("saveCustomRecipeBtn").addEventListener("click", saveNewCustomRecipe);
 }
 
+function customRecipeMatchesFilters(r){
+  if (customRecipeFilters.mealType && r.mealType !== customRecipeFilters.mealType) return false;
+  if (customRecipeFilters.temperature && r.temperature !== customRecipeFilters.temperature) return false;
+  if (customRecipeFilters.equipment.size > 0) {
+    const eq = r.equipment || [];
+    for (const tag of customRecipeFilters.equipment) if (!eq.includes(tag)) return false;
+  }
+  return true;
+}
+
 function renderCustomRecipes(){
   const list = loadCustomRecipes();
   const sectionEl = document.getElementById("customRecipesSection");
   if (!sectionEl) return;
 
-  const cardsHtml = list.slice().reverse().map(r => `
+  const filtered = list.filter(customRecipeMatchesFilters);
+  const filtersActive = customRecipeFilters.mealType || customRecipeFilters.temperature || customRecipeFilters.equipment.size > 0;
+
+  const cardsHtml = filtered.slice().reverse().map(r => `
     <div class="dish-card" data-id="${r.id}">
       <button type="button" class="dish-delete" data-id="${r.id}" aria-label="Supprimer cette recette">✕</button>
       <div class="dish-card-top" data-id="${r.id}" role="button" tabindex="0">
@@ -4365,11 +4686,46 @@ function renderCustomRecipes(){
           <div class="badges">
             <span class="badge custom">📝 Ma recette</span>
             ${r.difficulty ? `<span class="badge">${DIFFICULTY_LABELS[r.difficulty]}</span>` : ""}
+            ${r.mealType ? `<span class="badge">${r.mealType}</span>` : ""}
+            ${r.temperature ? `<span class="badge">${r.temperature === "Chaud" ? "🔥" : "❄️"}</span>` : ""}
           </div>
         </div>
       </div>
     </div>
   `).join("");
+
+  // La barre de filtres n'a d'intérêt que s'il y a plusieurs recettes ; on la garde discrète sinon.
+  // Regroupés en menus déroulants compacts pour ne pas surcharger l'écran (type de plat / température / équipement).
+  const mealTypeDropdown = `
+    <div class="filter-dropdown${openFilterKeys.customrecipes === "mealType" ? " open" : ""}" data-filter-group="customrecipes" data-filter-key="mealType">
+      <button type="button" class="filter-dropdown-trigger${customRecipeFilters.mealType ? " active" : ""}">${customRecipeFilters.mealType || "Type de plat"}<span class="caret">▾</span></button>
+      <div class="filter-dropdown-panel">
+        ${CUSTOM_MEAL_TYPES.map(t => `<button type="button" class="chip filter-chip ${customRecipeFilters.mealType === t ? "selected" : ""}" data-kind="mealType" data-value="${t}">${t}</button>`).join("")}
+      </div>
+    </div>`;
+  const temperatureDropdown = `
+    <div class="filter-dropdown${openFilterKeys.customrecipes === "temperature" ? " open" : ""}" data-filter-group="customrecipes" data-filter-key="temperature">
+      <button type="button" class="filter-dropdown-trigger${customRecipeFilters.temperature ? " active" : ""}">${customRecipeFilters.temperature ? (customRecipeFilters.temperature === "Chaud" ? "🔥 Chaud" : "❄️ Froid") : "Température"}<span class="caret">▾</span></button>
+      <div class="filter-dropdown-panel">
+        <button type="button" class="chip filter-chip ${customRecipeFilters.temperature === "Chaud" ? "selected" : ""}" data-kind="temperature" data-value="Chaud">🔥 Chaud</button>
+        <button type="button" class="chip filter-chip ${customRecipeFilters.temperature === "Froid" ? "selected" : ""}" data-kind="temperature" data-value="Froid">❄️ Froid</button>
+      </div>
+    </div>`;
+  const equipmentDropdown = `
+    <div class="filter-dropdown${openFilterKeys.customrecipes === "equipment" ? " open" : ""}" data-filter-group="customrecipes" data-filter-key="equipment">
+      <button type="button" class="filter-dropdown-trigger${customRecipeFilters.equipment.size > 0 ? " active" : ""}">Équipement${customRecipeFilters.equipment.size > 0 ? ` (${customRecipeFilters.equipment.size})` : ""}<span class="caret">▾</span></button>
+      <div class="filter-dropdown-panel">
+        ${CUSTOM_EQUIPMENT_TAGS.map(eq => `<button type="button" class="chip filter-chip ${customRecipeFilters.equipment.has(eq) ? "selected" : ""}" data-kind="equipment" data-value="${eq}">${eq}</button>`).join("")}
+      </div>
+    </div>`;
+  const filterBarHtml = (list.length > 1 && !customRecipeFormOpen) ? `
+    <div class="filter-dropdown-row">
+      ${mealTypeDropdown}
+      ${temperatureDropdown}
+      ${equipmentDropdown}
+      ${filtersActive ? `<button type="button" class="chip filter-chip filter-reset" id="resetCustomRecipeFilters">✕ Réinitialiser</button>` : ""}
+    </div>
+  ` : "";
 
   sectionEl.innerHTML = `
     <div class="section-header">
@@ -4377,7 +4733,10 @@ function renderCustomRecipes(){
       <button type="button" class="add-recipe-btn" id="toggleCustomRecipeForm">${customRecipeFormOpen ? "Annuler" : "+ Ajouter une recette"}</button>
     </div>
     ${customRecipeFormOpen ? renderCustomRecipeFormHTML(customRecipeDraft) : ""}
-    ${list.length > 0 ? cardsHtml : (customRecipeFormOpen ? "" : `<p class="hint">Aucune recette perso pour l'instant.</p>`)}
+    ${filterBarHtml}
+    ${list.length > 0
+      ? (filtered.length > 0 ? cardsHtml : `<p class="hint">Aucune recette perso ne correspond à ces filtres.</p>`)
+      : (customRecipeFormOpen ? "" : `<p class="hint">Aucune recette perso pour l'instant.</p>`)}
   `;
 
   document.getElementById("toggleCustomRecipeForm").addEventListener("click", () => {
@@ -4387,6 +4746,24 @@ function renderCustomRecipes(){
   });
 
   if (customRecipeFormOpen) attachCustomRecipeFormListeners();
+
+  sectionEl.querySelectorAll(".filter-chip:not(.filter-reset)").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const kind = btn.dataset.kind, value = btn.dataset.value;
+      if (kind === "equipment") {
+        if (customRecipeFilters.equipment.has(value)) customRecipeFilters.equipment.delete(value);
+        else customRecipeFilters.equipment.add(value);
+      } else {
+        customRecipeFilters[kind] = customRecipeFilters[kind] === value ? null : value;
+      }
+      renderCustomRecipes();
+    });
+  });
+  const resetBtn = document.getElementById("resetCustomRecipeFilters");
+  if (resetBtn) resetBtn.addEventListener("click", () => {
+    customRecipeFilters = { mealType: null, temperature: null, equipment: new Set() };
+    renderCustomRecipes();
+  });
 
   sectionEl.querySelectorAll(".dish-card-top").forEach(top => {
     top.addEventListener("click", () => showCustomRecipeDetail(top.dataset.id, "mesplats"));
@@ -4423,6 +4800,9 @@ function saveNewCustomRecipe(){
     difficulty: draft.difficulty || null,
     prepMinutes: draft.prepMinutes ? Number(draft.prepMinutes) : null,
     totalMinutes: draft.totalMinutes ? Number(draft.totalMinutes) : null,
+    mealType: draft.mealType || null,
+    temperature: draft.temperature || null,
+    equipment: draft.equipment.slice(),
     createdAt: new Date().toISOString()
   };
   list.push(newRecipe);
@@ -4465,7 +4845,10 @@ async function showCustomRecipeDetail(id, returnTo){
           image: data.image,
           difficulty: data.difficulty,
           prepMinutes: data.prep_minutes,
-          totalMinutes: data.total_minutes
+          totalMinutes: data.total_minutes,
+          mealType: data.meal_type,
+          temperature: data.temperature,
+          equipment: data.equipment || []
         };
         authorId = data.user_id;
         authorName = (data.profiles && data.profiles.username) || null;
@@ -4505,6 +4888,12 @@ async function showCustomRecipeDetail(id, returnTo){
       <div class="badges" style="margin-bottom:8px;">
         ${recipe.prepMinutes ? `<span class="badge" title="Temps de prépa (actif)">🔪 ~${recipe.prepMinutes} min</span>` : ""}
         ${recipe.totalMinutes ? `<span class="badge" title="Temps total, du début à l'assiette">⏱ ~${recipe.totalMinutes} min</span>` : ""}
+      </div>` : ""}
+      ${(recipe.mealType || recipe.temperature || (recipe.equipment && recipe.equipment.length > 0)) ? `
+      <div class="badges" style="margin-bottom:8px;">
+        ${recipe.mealType ? `<span class="badge">${recipe.mealType}</span>` : ""}
+        ${recipe.temperature ? `<span class="badge">${recipe.temperature === "Chaud" ? "🔥 Chaud" : "❄️ Froid"}</span>` : ""}
+        ${(recipe.equipment || []).map(eq => `<span class="badge">${eq}</span>`).join("")}
       </div>` : ""}
       <div class="match ${missing.length === 0 ? 'ok' : ''}" style="margin-bottom:8px;">
         ${missing.length === 0 ? "✅ Tu as tout ce qu'il faut" : `Il te manque : ${missing.map(m => translateIngredient(m.name)).join(", ")}`}
@@ -4738,6 +5127,7 @@ async function performAccountDeletion(){
 }
 
 function renderParametres(){
+  document.getElementById("darkModeToggle").checked = loadSettings().theme === "dark";
   document.getElementById("antiWasteToggle").checked = loadSettings().antiWaste;
   const statsEl = document.getElementById("wasteStats");
   const count = getWasteSavedCount();
@@ -4760,6 +5150,14 @@ function renderParametres(){
     document.querySelectorAll("#taggingPermissionPicker button").forEach(b => b.classList.toggle("selected", b.dataset.value === taggingPerm));
   }
 }
+document.getElementById("darkModeToggle").addEventListener("change", (e) => {
+  const s = loadSettings();
+  s.theme = e.target.checked ? "dark" : "light";
+  saveSettings(s);
+  document.documentElement.dataset.theme = e.target.checked ? "dark" : "";
+  const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeColorMeta) themeColorMeta.setAttribute("content", e.target.checked ? "#1C1815" : "#F6EFE2");
+});
 document.getElementById("antiWasteToggle").addEventListener("change", (e) => {
   const s = loadSettings();
   s.antiWaste = e.target.checked;
@@ -4814,9 +5212,16 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && !document.getElementById("view-liste").hidden) requestWakeLock();
 });
 
+// Libellés des onglets principaux, utilisés pour le bouton "← Retour" des écrans secondaires (menu ☰)
+const MAIN_TAB_LABELS = { frigo: "Mon frigo", cuisiner: "Cuisiner", mesplats: "Mes plats", communaute: "Communauté" };
+function updateSecondaryBackButtons(){
+  const label = `← Retour à ${MAIN_TAB_LABELS[lastMainTab] || "l'accueil"}`;
+  document.querySelectorAll(".secondary-back-btn").forEach(btn => { btn.textContent = label; });
+}
 function showSecondaryView(id, param){
   document.getElementById("menuPanel").hidden = true;
   document.getElementById("notifPanel").hidden = true;
+  updateSecondaryBackButtons();
   document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== `view-${id}`);
   if (id === "liste") { renderShoppingList(); requestWakeLock(); }
   else {
@@ -4935,8 +5340,32 @@ document.addEventListener("click", (e) => {
   const notifPanel = document.getElementById("notifPanel");
   if (!notifPanel.hidden && !notifPanel.contains(e.target) && e.target.id !== "notifBtn" && !e.target.closest("#notifBtn")) notifPanel.hidden = true;
 });
+// ---- Filtres façon "menu déroulant" : délégué globalement pour survivre aux re-rendus (innerHTML) des listes ----
+// openFilterKeys mémorise quel menu est ouvert par groupe (ex: "cuisiner", "customrecipes"), pour le rouvrir
+// automatiquement après un re-rendu déclenché par un clic sur une option à l'intérieur du panneau.
+let openFilterKeys = {};
+document.addEventListener("click", (e) => {
+  const trigger = e.target.closest(".filter-dropdown-trigger");
+  if (trigger) {
+    const dropdown = trigger.closest(".filter-dropdown");
+    const group = dropdown.dataset.filterGroup;
+    const key = dropdown.dataset.filterKey;
+    const wasOpen = dropdown.classList.contains("open");
+    document.querySelectorAll(`.filter-dropdown[data-filter-group="${group}"]`).forEach(d => d.classList.remove("open"));
+    if (!wasOpen) { dropdown.classList.add("open"); openFilterKeys[group] = key; }
+    else openFilterKeys[group] = null;
+    return;
+  }
+  if (!e.target.closest(".filter-dropdown-panel")) {
+    document.querySelectorAll(".filter-dropdown.open").forEach(d => d.classList.remove("open"));
+    openFilterKeys = {};
+  }
+});
 document.querySelectorAll(".menu-item").forEach(btn => {
   btn.addEventListener("click", () => showSecondaryView(btn.dataset.action));
+});
+document.querySelectorAll(".secondary-back-btn").forEach(btn => {
+  btn.addEventListener("click", () => switchTab(lastMainTab));
 });
 
 // ---- Navigation par onglets ----
