@@ -88,6 +88,10 @@
     background:var(--bg);
     padding:22px 20px 8px;
   }
+  .offline-banner{
+    background:var(--tomato-tint);color:var(--tomato-dark);font-size:12.5px;font-weight:600;
+    text-align:center;padding:6px 10px;border-radius:8px;margin:0 0 10px;
+  }
   .header-top{display:flex;align-items:center;justify-content:space-between;}
   header h1{
     margin:0;
@@ -748,6 +752,10 @@
   .feed-actions{display:flex;gap:16px;margin-top:10px;align-items:center;}
   .like-btn{background:none;border:none;font-size:14px;cursor:pointer;color:var(--ink-dim);display:flex;align-items:center;gap:5px;}
   .like-btn.liked{color:var(--tomato);}
+  .like-icon{display:inline-block;}
+  @keyframes likePop{0%{transform:scale(1);}35%{transform:scale(1.4);}60%{transform:scale(.92);}100%{transform:scale(1);}}
+  .like-icon.like-pop{animation:likePop .35s cubic-bezier(.34,1.56,.64,1);}
+  @media (prefers-reduced-motion: reduce){.like-icon.like-pop{animation:none;}}
   .save-btn{background:none;border:none;font-size:16px;cursor:pointer;color:var(--ink-dim);margin-left:auto;opacity:.4;filter:grayscale(1);}
   .save-btn.saved{opacity:1;filter:none;}
   .detail-save-btn{font-size:22px;flex-shrink:0;margin-left:8px;padding:2px;}
@@ -759,6 +767,25 @@
   .bilan-highlight-title{font-size:12.5px;color:var(--ink-dim);margin-bottom:4px;}
   .bilan-highlight-name{font-family:var(--font-display);font-weight:600;font-size:16px;color:var(--ink);}
   .bilan-waste{margin-top:10px;padding:12px 14px;background:var(--basil-tint);border:1px solid var(--basil);border-radius:12px;font-size:13.5px;color:var(--ink);}
+  .success-card{
+    text-align:center;padding:28px 20px;margin:14px 0;
+    background:var(--basil-tint);border:1px solid var(--basil);border-radius:16px;
+    color:var(--basil-ink);font-size:14.5px;line-height:1.6;
+  }
+  .success-icon{display:inline-block;font-size:34px;line-height:1;margin-bottom:6px;}
+  @keyframes successPop{0%{transform:scale(0.4) rotate(-8deg);opacity:0;}60%{transform:scale(1.15) rotate(3deg);opacity:1;}100%{transform:scale(1) rotate(0);}}
+  .success-icon.pop{animation:successPop .45s cubic-bezier(.34,1.56,.64,1);}
+  @media (prefers-reduced-motion: reduce){.success-icon.pop{animation:none;}}
+  #appToast{
+    position:fixed;left:50%;bottom:78px;transform:translateX(-50%) translateY(10px);
+    max-width:320px;width:calc(100% - 32px);
+    background:var(--ink);color:var(--bg);font-size:13.5px;line-height:1.5;font-weight:600;
+    padding:12px 16px;border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.22);
+    z-index:60;opacity:0;pointer-events:none;transition:opacity .25s ease,transform .25s ease;
+    text-align:center;
+  }
+  #appToast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  @media (prefers-reduced-motion: reduce){#appToast{transition:opacity .01s linear;transform:translateX(-50%);}}
   .saved-folder{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden;}
   .saved-folder-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;font-weight:600;font-size:14px;background:var(--surface);}
   .saved-folder-body{border-top:1px solid var(--line);padding:10px;background:var(--bg);}
@@ -826,6 +853,7 @@
 </div>
 
 <header>
+  <div id="offlineBanner" class="offline-banner" hidden>📡 Tu es hors ligne — certaines actions ne fonctionneront pas.</div>
   <div class="header-top">
     <h1><img id="headerLogoImg" class="header-logo-img" alt="">Olymi</h1>
     <div style="display:flex;align-items:center;gap:8px;">
@@ -995,7 +1023,10 @@
 
 <main id="view-communaute" class="view">
   <div id="authLoggedOut">
-    <div class="auth-card">
+    <button type="button" id="authCompactBanner" class="add-toggle-btn" style="text-align:left;display:flex;align-items:center;justify-content:space-between;">
+      <span>🔒 Se connecter ou créer un compte</span><span aria-hidden="true">→</span>
+    </button>
+    <div class="auth-card" id="loginAuthCard" hidden>
       <h3 id="authTitle">Se connecter</h3>
       <p class="hint">Pour partager tes recettes et suivre tes amis.</p>
       <form id="authForm" class="auth-form" novalidate>
@@ -1039,6 +1070,7 @@
     <p id="recoveryError" class="auth-error" hidden></p>
   </div>
   <div id="authLoggedIn" hidden>
+    <div id="communautePreviewLabel" class="urgent-header rest" style="margin:4px 0 12px;" hidden>🌍 Aperçu du fil public — connecte-toi pour aimer, commenter et publier</div>
     <div class="feed-search-wrap">
       <input type="text" id="profileSearchInput" class="search-input" placeholder="🔍 Un pseudo ou un #hashtag…" autocomplete="off">
       <div id="profileSearchResults" class="profile-search-results" hidden></div>
@@ -1161,6 +1193,67 @@ try {
 let currentUser = null;
 let currentProfile = null;
 let authMode = "signin"; // "signup" | "signin" — la connexion est le cas le plus fréquent, donc la valeur par défaut
+
+function confirmAction(message, confirmLabel){
+  return new Promise(resolve => {
+    let overlay = document.getElementById("confirmOverlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "confirmOverlay";
+      overlay.className = "modal-overlay";
+      overlay.hidden = true;
+      overlay.innerHTML = `<div class="modal-card" id="confirmCard"></div>`;
+      document.body.appendChild(overlay);
+    }
+    const card = document.getElementById("confirmCard");
+    card.innerHTML = `
+      <h3>Confirmer la suppression</h3>
+      <p>${message}</p>
+      <div class="modal-actions">
+        <button type="button" class="rate-taste-btn" id="confirmCancelBtn">Annuler</button>
+        <button type="button" class="danger-btn-solid" id="confirmOkBtn">${confirmLabel || "Supprimer"}</button>
+      </div>
+    `;
+    overlay.hidden = false;
+    const cancelBtn = document.getElementById("confirmCancelBtn");
+    const okBtn = document.getElementById("confirmOkBtn");
+    function cleanup(result){
+      overlay.hidden = true;
+      cancelBtn.removeEventListener("click", onCancel);
+      okBtn.removeEventListener("click", onOk);
+      resolve(result);
+    }
+    function onCancel(){ cleanup(false); }
+    function onOk(){ cleanup(true); }
+    cancelBtn.addEventListener("click", onCancel);
+    okBtn.addEventListener("click", onOk);
+  });
+}
+
+let appToastTimeout = null;
+function showToast(message){
+  let toast = document.getElementById("appToast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "appToast";
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add("show");
+  clearTimeout(appToastTimeout);
+  appToastTimeout = setTimeout(() => toast.classList.remove("show"), 4000);
+}
+
+// ---- Bandeau "hors ligne" : purement informatif, ne rend pas l'appli utilisable hors connexion ----
+function updateOfflineBanner(){
+  const banner = document.getElementById("offlineBanner");
+  if (banner) banner.hidden = navigator.onLine;
+}
+window.addEventListener("online", updateOfflineBanner);
+window.addEventListener("offline", updateOfflineBanner);
+updateOfflineBanner();
 
 function authErrorMessage(err){
   const msg = ((err && err.message) || "").toLowerCase();
@@ -1389,8 +1482,10 @@ function renderAuthUI(){
   if (!loggedOutEl) return; // la vue Communauté n'a pas encore été construite dans le DOM
   document.getElementById("authRecovery").hidden = true;
   loggedOutEl.hidden = !!currentUser;
-  loggedInEl.hidden = !currentUser;
-  if (currentUser && typeof lastMainTab !== "undefined" && lastMainTab === "communaute") loadFeed();
+  loggedInEl.hidden = false; // le fil public reste visible même sans compte (aperçu) ; seules les actions (like, commentaire...) redirigent vers la connexion
+  const previewLabelEl = document.getElementById("communautePreviewLabel");
+  if (previewLabelEl) previewLabelEl.hidden = !!currentUser;
+  if (typeof lastMainTab !== "undefined" && lastMainTab === "communaute") loadFeed();
 }
 
 // ---- Badge de notifications non lues, sur la cloche du header ----
@@ -1600,7 +1695,7 @@ document.getElementById("hashtagBackBtn").addEventListener("click", () => switch
 // ---- Fil communautaire (V2 — Phase 3) ----
 function renderCommunaute(){
   renderAuthUI();
-  if (currentUser) loadFeed();
+  loadFeed(); // le fil public est visible sans compte (aperçu), pas seulement une fois connecté
 }
 
 let feedPostsCache = [];
@@ -1871,11 +1966,11 @@ function renderNotificationHTML(n){
   const color = (n.profiles && n.profiles.avatar_color) || "#1F251F";
   const avatarUrl = n.profiles && n.profiles.avatar_url;
   const avatarStyle = avatarUrl ? `background:url('${avatarUrl}') center/cover no-repeat;` : `background:${color};`;
-  const text = n.type === "comment" ? `<b>${author}</b> a commenté ta publication.`
-    : n.type === "follow" ? `<b>${author}</b> a commencé à te suivre.`
-    : n.type === "mention" ? `<b>${author}</b> t'a mentionné.`
-    : n.type === "tag" ? `<b>${author}</b> t'a tagué dans une recette.`
-    : `<b>${author}</b> souhaite te suivre.`;
+  const text = n.type === "comment" ? `<b>${escAttr(author)}</b> a commenté ta publication.`
+    : n.type === "follow" ? `<b>${escAttr(author)}</b> a commencé à te suivre.`
+    : n.type === "mention" ? `<b>${escAttr(author)}</b> t'a mentionné.`
+    : n.type === "tag" ? `<b>${escAttr(author)}</b> t'a tagué dans une recette.`
+    : `<b>${escAttr(author)}</b> souhaite te suivre.`;
   const actions = n.type === "follow_request" ? `
     <div class="notif-actions">
       <button type="button" class="rate-taste-btn" data-action="accept-follow" style="padding:6px 10px;font-size:12px;">Accepter</button>
@@ -2000,9 +2095,9 @@ function renderCommentHTML(c){
   const isOwnComment = currentUser && c.user_id === currentUser.id;
   return `
     <div class="feed-comment-item" data-comment-id="${c.id}">
-      <div class="feed-comment-main"><b>${(c.profiles && c.profiles.username) || "?"}</b> ${renderTextWithMentions(c.body)}</div>
+      <div class="feed-comment-main"><b>${escAttr((c.profiles && c.profiles.username) || "?")}</b> ${renderTextWithMentions(c.body)}</div>
       <div class="feed-comment-actions">
-        <button type="button" class="comment-like-btn${cLiked ? " liked" : ""}" data-liked="${cLiked}">${cLiked ? "❤️" : "🤍"} <span class="like-count">${c.comment_likes.length}</span></button>
+        <button type="button" class="comment-like-btn${cLiked ? " liked" : ""}" data-liked="${cLiked}" aria-label="${cLiked ? "Retirer le j'aime" : "J'aime ce commentaire"} (${c.comment_likes.length})"><span class="like-icon">${cLiked ? "❤️" : "🤍"}</span> <span class="like-count">${c.comment_likes.length}</span></button>
         ${isOwnComment ? `<button type="button" class="comment-delete-btn" aria-label="Supprimer le commentaire">🗑</button>` : ""}
       </div>
     </div>
@@ -2028,7 +2123,7 @@ function renderFeedCardHTML(post){
         <div class="feed-author-link" data-user-id="${post.user_id}" style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer;">
           <div class="feed-avatar" style="${avatarStyle}">${avatarUrl ? "" : author[0].toUpperCase()}</div>
           <div class="feed-header-info">
-            <div class="feed-author">${author}${taggedUsername ? ` <span class="feed-tagged-link" data-user-id="${post.tagged.id}"> &amp; ${escAttr(taggedUsername)}</span>` : ""}</div>
+            <div class="feed-author">${escAttr(author)}${taggedUsername ? ` <span class="feed-tagged-link" data-user-id="${post.tagged.id}"> &amp; ${escAttr(taggedUsername)}</span>` : ""}</div>
             <div class="feed-date">${date}</div>
           </div>
         </div>
@@ -2041,7 +2136,7 @@ function renderFeedCardHTML(post){
           </div>
         </div>` : ""}
       </div>
-      ${!isEditing && image ? `<img class="feed-image" src="${image}" alt="">` : ""}
+      ${!isEditing && image ? `<img class="feed-image" src="${image}" alt="" loading="lazy" decoding="async">` : ""}
       ${isEditing ? `
         <div class="feed-edit-form">
           ${(() => {
@@ -2061,7 +2156,7 @@ function renderFeedCardHTML(post){
               <input type="file" accept="image/*" class="edit-photo-input" hidden>
             </div>`;
           })()}
-          <input type="text" class="search-input edit-title-input" placeholder="Titre de ta publication (facultatif)" maxlength="80" value="${(post.post_title || "").replace(/"/g, "&quot;")}">
+          <input type="text" class="search-input edit-title-input" placeholder="Titre de ta publication (facultatif)" maxlength="80" value="${escAttr(post.post_title || "")}">
           <input type="text" class="search-input edit-tagged-input" placeholder="👤 Fait avec... (pseudo, facultatif)" maxlength="24" style="margin-top:8px;" value="${(post.tagged && post.tagged.username) ? escAttr(post.tagged.username) : ""}">
           <textarea class="search-input edit-comment-input" placeholder="Un petit mot sur ta recette (facultatif — @pseudo pour mentionner quelqu'un)" style="margin-top:8px;resize:vertical;min-height:60px;">${post.comment || ""}</textarea>
           <div class="edit-actions">
@@ -2070,12 +2165,12 @@ function renderFeedCardHTML(post){
           </div>
         </div>
       ` : `
-        <div class="feed-title">${post.post_title || post.recipe_title}</div>
-        <div class="feed-recipe-link" data-recipe-id="${post.recipe_id}">🍽 ${post.recipe_title}${post.difficulty ? " · " + (DIFFICULTY_LABELS[post.difficulty] || "") : ""}${post.is_custom_recipe ? ` <span class="badge custom">📝 Ma recette</span>` : ""}</div>
+        <div class="feed-title">${escAttr(post.post_title || post.recipe_title)}</div>
+        <div class="feed-recipe-link" data-recipe-id="${post.recipe_id}">🍽 ${escAttr(post.recipe_title)}${post.difficulty ? " · " + (DIFFICULTY_LABELS[post.difficulty] || "") : ""}${post.is_custom_recipe ? ` <span class="badge custom">📝 Ma recette</span>` : ""}</div>
         ${post.comment ? `<p class="feed-comment-text">${renderTextWithMentions(post.comment)}</p>` : ""}
       `}
       <div class="feed-actions">
-        <button type="button" class="like-btn${liked ? " liked" : ""}" data-liked="${liked}">${liked ? "❤️" : "🤍"} <span class="like-count">${post.likes.length}</span></button>
+        <button type="button" class="like-btn${liked ? " liked" : ""}" data-liked="${liked}" aria-label="${liked ? "Retirer le j'aime" : "J'aime cette publication"} (${post.likes.length})"><span class="like-icon">${liked ? "❤️" : "🤍"}</span> <span class="like-count">${post.likes.length}</span></button>
         <span class="feed-comment-count" style="color:var(--ink-dim);font-size:13px;">💬 ${comments.length}</span>
         <button type="button" class="save-btn${isSaved ? " saved" : ""}" data-saved="${isSaved}" data-recipe-id="${post.recipe_id}" aria-label="Enregistrer la recette">🔖</button>
       </div>
@@ -2094,7 +2189,28 @@ function renderFeed(posts){
   feedPostsCache = posts;
   const container = document.getElementById("feedContainer");
   if (posts.length === 0) {
-    container.innerHTML = `<div class="state-msg">Aucune publication pour l'instant 👀<br>Sois le premier à partager une recette cuisinée !</div>`;
+    let msg;
+    if (feedMode === "mine") {
+      msg = currentUser
+        ? `Aucune publication de tes abonnements pour l'instant 👀<br><button type="button" class="rate-taste-btn" id="emptyFeedSwitchBtn" data-mode="public">🌍 Voir le fil public</button>`
+        : `Connecte-toi pour voir les publications de tes abonnements.<br><button type="button" class="rate-taste-btn" id="emptyFeedLoginBtn">Se connecter</button>`;
+    } else if (feedMode === "decouvrir") {
+      msg = `Pas encore assez de publications pour établir un classement 🔥<br><button type="button" class="rate-taste-btn" id="emptyFeedSwitchBtn" data-mode="public">🌍 Voir le fil public</button>`;
+    } else {
+      msg = currentUser
+        ? `Aucune publication pour l'instant 👀<br>Sois le premier à partager une recette cuisinée !`
+        : `Aucune publication pour l'instant 👀<br>Crée un compte pour partager tes recettes et suivre la communauté.<br><button type="button" class="rate-taste-btn" id="emptyFeedLoginBtn">Se connecter / créer un compte</button>`;
+    }
+    container.innerHTML = `<div class="state-msg">${msg}</div>`;
+    const switchBtn = container.querySelector("#emptyFeedSwitchBtn");
+    if (switchBtn) switchBtn.addEventListener("click", () => {
+      const targetMode = switchBtn.dataset.mode;
+      document.querySelectorAll(".feed-mode-btn").forEach(b => b.classList.toggle("selected", b.dataset.mode === targetMode));
+      feedMode = targetMode;
+      loadFeed();
+    });
+    const loginBtn = container.querySelector("#emptyFeedLoginBtn");
+    if (loginBtn) loginBtn.addEventListener("click", showDiscoverScreen);
     return;
   }
   container.innerHTML = posts.map(renderFeedCardHTML).join("");
@@ -2113,7 +2229,14 @@ function refreshCard(postId){
 function updateLikeButtonDOM(btn, liked, count){
   btn.dataset.liked = String(liked);
   btn.classList.toggle("liked", liked);
-  btn.innerHTML = `${liked ? "❤️" : "🤍"} <span class="like-count">${count}</span>`;
+  btn.innerHTML = `<span class="like-icon">${liked ? "❤️" : "🤍"}</span> <span class="like-count">${count}</span>`;
+  const isComment = btn.classList.contains("comment-like-btn");
+  const label = liked ? "Retirer le j'aime" : (isComment ? "J'aime ce commentaire" : "J'aime cette publication");
+  btn.setAttribute("aria-label", `${label} (${count})`);
+  if (liked) {
+    const icon = btn.querySelector(".like-icon");
+    if (icon) { icon.classList.remove("like-pop"); void icon.offsetWidth; icon.classList.add("like-pop"); }
+  }
 }
 
 // ---- Toutes les interactions du fil passent par une délégation d'événements unique : ----
@@ -2202,8 +2325,8 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
         editingPostId = null;
         editPhotoState = null;
         refreshCard(postId);
-        if (tagNotFound) alert("Pseudo tagué introuvable — vérifie l'orthographe. Le reste a bien été enregistré.");
-        else if (tagNotAllowed) alert("Cette personne n'autorise pas les tags — elle n'a pas été ajoutée. Le reste a bien été enregistré.");
+        if (tagNotFound) showToast("Pseudo tagué introuvable — vérifie l'orthographe. Le reste a bien été enregistré.");
+        else if (tagNotAllowed) showToast("Cette personne n'autorise pas les tags — elle n'a pas été ajoutée. Le reste a bien été enregistré.");
       } catch (err) {
         console.warn("Modification de la publication impossible :", err);
         saveBtn.disabled = false;
@@ -2211,7 +2334,7 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
       return;
     }
     if (e.target.closest('[data-action="delete"]')) {
-      if (!confirm("Supprimer définitivement cette publication ?")) return;
+      if (!(await confirmAction("Cette publication sera supprimée définitivement."))) return;
       try {
         const { error } = await sb.from("posts").delete().eq("id", postId);
         if (error) throw error;
@@ -2224,7 +2347,7 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
 
     const likeBtn = e.target.closest(".like-btn");
     if (likeBtn) {
-      if (!currentUser) return;
+      if (!currentUser) { showDiscoverScreen(); return; }
       const wasLiked = likeBtn.dataset.liked === "true";
       post.likes = wasLiked ? post.likes.filter(l => l.user_id !== currentUser.id) : [...post.likes, { user_id: currentUser.id }];
       updateLikeButtonDOM(likeBtn, !wasLiked, post.likes.length);
@@ -2241,14 +2364,14 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
 
     const saveBtn = e.target.closest(".save-btn");
     if (saveBtn) {
-      if (!currentUser) return;
+      if (!currentUser) { showDiscoverScreen(); return; }
       openSaveRecipeModal(post.recipe_id, post.recipe_title, post.hide_photo ? null : (post.photo_url || post.recipe_image), post.difficulty);
       return;
     }
 
     const commentLikeBtn = e.target.closest(".comment-like-btn");
     if (commentLikeBtn) {
-      if (!currentUser) return;
+      if (!currentUser) { showDiscoverScreen(); return; }
       const commentEl = commentLikeBtn.closest(".feed-comment-item");
       const commentId = commentEl.dataset.commentId;
       const comment = post.comments.find(c => String(c.id) === String(commentId));
@@ -2271,7 +2394,7 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
     if (commentDeleteBtn) {
       const commentEl = commentDeleteBtn.closest(".feed-comment-item");
       const commentId = commentEl.dataset.commentId;
-      if (!confirm("Supprimer ce commentaire ?")) return;
+      if (!(await confirmAction("Ce commentaire sera supprimé définitivement."))) return;
       try {
         const { error } = await sb.from("comments").delete().eq("id", commentId);
         if (error) throw error;
@@ -2303,7 +2426,8 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
     const post = feedPostsCache.find(p => String(p.id) === String(postId));
     const input = form.querySelector("input");
     const body = input.value.trim();
-    if (!body || !currentUser || !post) return;
+    if (!body || !post) return;
+    if (!currentUser) { showDiscoverScreen(); return; }
     const submitBtn = form.querySelector("button");
     submitBtn.disabled = true;
     try {
@@ -3052,7 +3176,7 @@ const MEASURE_UNITS = {
   "pint": "pinte", "pints": "pintes", "knob": "noix", "of": "de",
   "large": "gros", "small": "petit", "medium": "moyen"
 };
-function translateMeasure(measure){
+function translateMeasureRaw(measure){
   if (!measure) return "";
   let m = measure;
   Object.entries(MEASURE_PHRASES).forEach(([phrase, fr]) => {
@@ -3063,7 +3187,12 @@ function translateMeasure(measure){
     return MEASURE_UNITS[clean] || tok;
   }).join(" ");
 }
-function translateIngredient(name){
+// Le texte libre saisi par l'utilisateur (recettes perso) peut contenir n'importe quel caractère :
+// on échappe systématiquement le résultat avant de l'injecter dans le HTML des fiches recette.
+function translateMeasure(measure){
+  return escAttr(translateMeasureRaw(measure));
+}
+function translateIngredientRaw(name){
   const n = normalize(name);
   if (TRANSLATIONS[n]) return cap(TRANSLATIONS[n]);
   if (n.endsWith("s") && TRANSLATIONS[n.slice(0, -1)]) return cap(TRANSLATIONS[n.slice(0, -1)]);
@@ -3085,6 +3214,11 @@ function translateIngredient(name){
   if (translatedWords.some((w, i) => w !== words[i])) return cap(translatedWords.join(" "));
 
   return name; // rien de reconnu : anglais en dernier recours plutôt que de bloquer
+}
+// Le texte libre saisi par l'utilisateur (ingrédients des recettes perso) peut contenir n'importe quel
+// caractère : on échappe systématiquement le résultat avant de l'injecter dans le HTML des fiches recette.
+function translateIngredient(name){
+  return escAttr(translateIngredientRaw(name));
 }
 
 // ---- Traduction FR du nom de recette et de la préparation (textes libres, non couverts par le dictionnaire) ----
@@ -3503,10 +3637,10 @@ function renderRecipeResults(){
       <div class="recipe-card" data-id="${r.recipe.id}">
         <button type="button" class="week-add-card-btn${isInWeek(r.recipe.id) ? " added" : ""}" data-action="toggle-week" aria-label="Ajouter à ma semaine">📅</button>
         ${r.isCustom
-          ? (r.recipe.image ? `<img src="${r.recipe.image}" alt="">` : `<div class="recipe-card-img-placeholder"></div>`)
-          : `<img src="${r.recipe.image}/preview" alt="">`}
+          ? (r.recipe.image ? `<img src="${r.recipe.image}" alt="" loading="lazy" decoding="async">` : `<div class="recipe-card-img-placeholder"></div>`)
+          : `<img src="${r.recipe.image}/preview" alt="" loading="lazy" decoding="async">`}
         <div class="info">
-          <h3>${r.titleFr}</h3>
+          <h3>${escAttr(r.titleFr)}</h3>
           <div class="badges">
             ${r.isCustom ? `<span class="badge custom">📝 ${r.authorName ? escAttr(r.authorName) : "Recette perso"}</span>` : ""}
             ${(r.prepMinutes || !r.isCustom) ? `<span class="badge" title="Temps de prépa (actif)">🔪 ~${r.prepMinutes} min</span>` : ""}
@@ -3773,7 +3907,7 @@ async function showRecipeDetail(id, returnTo){
     <div class="recipe-detail">
       <img src="${recipe.image}" alt="">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
-        <h3 style="margin:0;">${titleT.text}</h3>
+        <h3 style="margin:0;">${escAttr(titleT.text)}</h3>
         <button type="button" class="save-btn detail-save-btn${isSaved ? " saved" : ""}" id="detailSaveBtn" data-saved="${isSaved}" data-recipe-id="${recipe.id}" aria-label="Enregistrer la recette">🔖</button>
       </div>
       <div class="meta">${recipe.area}${recipe.category ? " · " + recipe.category : ""}</div>
@@ -3973,15 +4107,17 @@ function renderSemaine(){
   const week = loadWeekRecipes();
   const container = document.getElementById("semaineContent");
   if (week.length === 0) {
-    container.innerHTML = `<div class="state-msg">Aucune recette ajoutée pour l'instant.<br>Va dans Cuisiner et appuie sur 📅 sur une recette pour l'ajouter ici.</div>`;
+    container.innerHTML = `<div class="state-msg">Aucune recette ajoutée pour l'instant.<br>Va dans Cuisiner et appuie sur 📅 sur une recette pour l'ajouter ici.<br><button type="button" class="rate-taste-btn" id="goToCuisinerFromSemaineBtn" style="margin-top:10px;">→ Aller cuisiner</button></div>`;
+    const goBtn = document.getElementById("goToCuisinerFromSemaineBtn");
+    if (goBtn) goBtn.addEventListener("click", () => switchTab("cuisiner"));
     return;
   }
   container.innerHTML = `
     ${week.map(w => `
       <div class="week-recipe-item" data-id="${w.id}">
-        <img src="${w.image || ""}" alt="">
+        <img src="${w.image || ""}" alt="" loading="lazy" decoding="async">
         <div class="info">
-          <h4 data-action="view-recipe">${w.title}</h4>
+          <h4 data-action="view-recipe">${escAttr(w.title)}</h4>
           <div class="week-mini-stepper">
             <button type="button" data-action="servings-minus" aria-label="Moins de personnes">−</button>
             <span>Pour ${w.servings} personne${w.servings > 1 ? "s" : ""}</span>
@@ -4185,13 +4321,15 @@ function renderEnregistrees(){
   const recipes = loadSavedRecipes();
   const container = document.getElementById("enregistreesContent");
   if (folders.length === 0 && recipes.length === 0) {
-    container.innerHTML = `<div class="state-msg">Aucune recette enregistrée pour l'instant.<br>Appuie sur 🔖 sur une publication pour l'enregistrer ici.</div>`;
+    container.innerHTML = `<div class="state-msg">Aucune recette enregistrée pour l'instant.<br>Appuie sur 🔖 sur une publication ou une fiche recette pour l'enregistrer ici.<br><button type="button" class="rate-taste-btn" id="goToCuisinerFromEnregistreesBtn" style="margin-top:10px;">→ Aller cuisiner</button></div>`;
+    const goBtn = document.getElementById("goToCuisinerFromEnregistreesBtn");
+    if (goBtn) goBtn.addEventListener("click", () => switchTab("cuisiner"));
     return;
   }
   const renderRecipeRow = (r) => `
     <div class="week-recipe-item" data-id="${r.id}">
-      <img src="${r.image || ""}" alt="">
-      <div class="info"><h4 data-action="view-saved-recipe">${r.title}</h4></div>
+      <img src="${r.image || ""}" alt="" loading="lazy" decoding="async">
+      <div class="info"><h4 data-action="view-saved-recipe">${escAttr(r.title)}</h4></div>
       <button type="button" class="week-remove-btn" data-action="remove-saved-recipe" aria-label="Retirer">🗑</button>
     </div>`;
   const unclassified = recipes.filter(r => !r.folderId);
@@ -4219,10 +4357,10 @@ function renderEnregistrees(){
     });
   });
   container.querySelectorAll('[data-action="delete-folder"]').forEach(btn => {
-    btn.addEventListener("click", (e) => {
+    btn.addEventListener("click", async (e) => {
       e.stopPropagation();
       const id = btn.closest(".saved-folder").dataset.folderId;
-      if (!confirm("Supprimer ce dossier ? Les recettes qu'il contient resteront dans tes recettes enregistrées.")) return;
+      if (!(await confirmAction("Le dossier sera supprimé. Les recettes qu'il contient resteront dans tes recettes enregistrées."))) return;
       deleteSavedFolder(id);
       if (expandedSavedFolder === id) expandedSavedFolder = null;
       renderEnregistrees();
@@ -4751,7 +4889,22 @@ function finishRecipe(usedUpValues, shareResult){
   else if (shareResult === "tag_not_found") shareMsg = "<br>🎉 Partagée avec la communauté !<br>⚠️ Le pseudo tagué n'a pas été trouvé, vérifie l'orthographe.";
   else if (shareResult === "tag_not_allowed") shareMsg = "<br>🎉 Partagée avec la communauté !<br>⚠️ Cette personne n'autorise pas les tags, elle n'a pas été ajoutée.";
   else if (shareResult === false) shareMsg = "<br>⚠️ Le partage n'a pas fonctionné, réessaie plus tard depuis Mes plats.";
-  document.getElementById("results").innerHTML = `<div class="state-msg">Recette marquée comme faite ✅${usedUpValues.length > 0 ? "<br>Ta liste d'ingrédients a été mise à jour." : ""}${shareMsg}</div>`;
+  document.getElementById("results").innerHTML = `
+    <div class="success-card">
+      <span class="success-icon">✅</span><br>
+      <strong>Recette marquée comme faite !</strong>
+      ${usedUpValues.length > 0 ? "<br>Ta liste d'ingrédients a été mise à jour." : ""}${shareMsg}
+      <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+        <button type="button" class="primary-btn" id="continueCookingBtn" style="width:auto;padding:11px 18px;">🍽 Continuer à cuisiner</button>
+        <button type="button" class="rate-taste-btn" id="viewMesPlatsBtn" style="align-self:center;">Voir Mes plats</button>
+      </div>
+    </div>`;
+  const successIcon = document.querySelector("#results .success-icon");
+  if (successIcon) { successIcon.classList.remove("pop"); void successIcon.offsetWidth; successIcon.classList.add("pop"); }
+  const continueBtn = document.getElementById("continueCookingBtn");
+  if (continueBtn) continueBtn.addEventListener("click", () => searchRecipes());
+  const viewMesPlatsBtn = document.getElementById("viewMesPlatsBtn");
+  if (viewMesPlatsBtn) viewMesPlatsBtn.addEventListener("click", () => switchTab("mesplats"));
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -4765,7 +4918,9 @@ function renderMesPlats(){
   const list = loadCookedDishes();
   const listEl = document.getElementById("mesPlatsList");
   if (list.length === 0) {
-    listEl.innerHTML = `<div class="state-msg">Aucun plat cuisiné pour l'instant 🍳<br>Les recettes que tu termines dans l'onglet "Cuisiner" apparaîtront ici.</div>`;
+    listEl.innerHTML = `<div class="state-msg">Aucun plat cuisiné pour l'instant 🍳<br>Les recettes que tu termines dans l'onglet "Cuisiner" apparaîtront ici.<br><button type="button" class="rate-taste-btn" id="goToCuisinerFromMesPlatsBtn" style="margin-top:10px;">→ Aller cuisiner</button></div>`;
+    const goBtn = document.getElementById("goToCuisinerFromMesPlatsBtn");
+    if (goBtn) goBtn.addEventListener("click", () => switchTab("cuisiner"));
     return;
   }
 
@@ -4801,11 +4956,11 @@ function renderMesPlats(){
         <button type="button" class="dish-delete" data-id="${dish.id}" aria-label="Supprimer ce plat">✕</button>
         <div class="dish-card-top" data-recipe-id="${dish.recipeId}" role="button" tabindex="0">
           <div class="dish-thumb">
-            ${(dish.photo || dish.image) ? `<img src="${dish.photo || dish.image}" alt="">` : `<div style="width:64px;height:64px;border-radius:10px;background:var(--surface-2);"></div>`}
+            ${(dish.photo || dish.image) ? `<img src="${dish.photo || dish.image}" alt="" loading="lazy" decoding="async">` : `<div style="width:64px;height:64px;border-radius:10px;background:var(--surface-2);"></div>`}
             ${timesCooked > 1 ? `<span class="cook-count-badge" title="Cuisiné ${timesCooked} fois">×${timesCooked}</span>` : ""}
           </div>
           <div>
-            <h3>${dish.title}</h3>
+            <h3>${escAttr(dish.title)}</h3>
             <div class="meta">${dateLabel}</div>
             <div class="badges">
               ${dish.difficulty ? `<span class="badge">${DIFFICULTY_LABELS[dish.difficulty]}</span>` : ""}
@@ -4846,7 +5001,10 @@ function renderMesPlats(){
     btn.addEventListener("click", () => { mesPlatsSort = btn.dataset.sort; renderMesPlats(); });
   });
   listEl.querySelectorAll(".dish-delete").forEach(btn => {
-    btn.addEventListener("click", () => deleteDish(btn.dataset.id));
+    btn.addEventListener("click", async () => {
+      if (!(await confirmAction("Ce plat sera retiré de ton historique."))) return;
+      deleteDish(btn.dataset.id);
+    });
   });
 }
 
@@ -4862,8 +5020,14 @@ function loadCustomRecipes(){
   catch(e) { return []; }
 }
 function saveCustomRecipes(list){
-  localStorage.setItem("foodme_custom_recipes", JSON.stringify(list));
+  try {
+    localStorage.setItem("foodme_custom_recipes", JSON.stringify(list));
+  } catch (e) {
+    console.error("Sauvegarde recettes perso :", e);
+    return false;
+  }
   scheduleCloudSync();
+  return true;
 }
 // Rend une recette perso consultable par les autres (amis, communauté) via une table Supabase partagée.
 async function syncCustomRecipeToCloud(recipe){
@@ -5131,9 +5295,9 @@ function renderCustomRecipes(){
     <div class="dish-card" data-id="${r.id}">
       <button type="button" class="dish-delete" data-id="${r.id}" aria-label="Supprimer cette recette">✕</button>
       <div class="dish-card-top" data-id="${r.id}" role="button" tabindex="0">
-        ${r.image ? `<img src="${r.image}" alt="">` : `<div style="width:64px;height:64px;border-radius:10px;background:var(--surface-2);flex-shrink:0;"></div>`}
+        ${r.image ? `<img src="${r.image}" alt="" loading="lazy" decoding="async">` : `<div style="width:64px;height:64px;border-radius:10px;background:var(--surface-2);flex-shrink:0;"></div>`}
         <div>
-          <h3>${r.title}</h3>
+          <h3>${escAttr(r.title)}</h3>
           <div class="badges">
             <span class="badge custom">📝 Ma recette</span>
             ${r.difficulty ? `<span class="badge">${DIFFICULTY_LABELS[r.difficulty]}</span>` : ""}
@@ -5220,7 +5384,8 @@ function renderCustomRecipes(){
     top.addEventListener("click", () => showCustomRecipeDetail(top.dataset.id, "mesplats"));
   });
   sectionEl.querySelectorAll(".dish-delete").forEach(btn => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
+      if (!(await confirmAction("Cette recette perso sera supprimée définitivement."))) return;
       saveCustomRecipes(loadCustomRecipes().filter(r => r.id !== btn.dataset.id));
       deleteCustomRecipeFromCloud(btn.dataset.id);
       renderCustomRecipes();
@@ -5261,7 +5426,11 @@ function saveNewCustomRecipe(){
     createdAt: new Date().toISOString()
   };
   list.push(newRecipe);
-  saveCustomRecipes(list);
+  if (!saveCustomRecipes(list)) {
+    errorEl.textContent = "Le stockage de ton téléphone est plein — libère de la place puis réessaie. Ta recette n'a pas été enregistrée.";
+    errorEl.style.display = "block";
+    return;
+  }
   syncCustomRecipeToCloud(newRecipe);
   customRecipeFormOpen = false;
   customRecipeDraft = null;
@@ -5295,7 +5464,7 @@ function attachStockCheckListeners(container, recipe, servings){
 }
 
 function formatCustomStepText(text){
-  return String(text).split(/(?<=[.!?])\s+/).filter(Boolean).join("<br>");
+  return escAttr(String(text)).split(/(?<=[.!?])\s+/).filter(Boolean).join("<br>");
 }
 function formatTimerLabel(seconds){
   return seconds % 3600 === 0 && seconds >= 3600 ? `${seconds / 3600} h` : `${Math.round(seconds / 60)} min`;
@@ -5360,7 +5529,7 @@ async function showCustomRecipeDetail(id, returnTo){
     <div class="recipe-detail">
       ${recipe.image ? `<img src="${recipe.image}" alt="">` : ""}
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
-        <h3 style="margin:0;">${recipe.title}${authorName ? ` <button type="button" class="recipe-author-link" id="recipeAuthorLink" data-author-id="${authorId}">créé par ${escAttr(authorName)}</button>` : ""}</h3>
+        <h3 style="margin:0;">${escAttr(recipe.title)}${authorName ? ` <button type="button" class="recipe-author-link" id="recipeAuthorLink" data-author-id="${authorId}">créé par ${escAttr(authorName)}</button>` : ""}</h3>
         <button type="button" class="save-btn detail-save-btn${isSaved ? " saved" : ""}" id="detailSaveBtn" data-saved="${isSaved}" data-recipe-id="${recipe.id}" aria-label="Enregistrer la recette">🔖</button>
       </div>
       <div class="badges" style="margin-bottom:8px;">
@@ -5544,6 +5713,7 @@ function renderShoppingList(){
 
 // ---- Menu ☰ (liste de courses, paramètres) ----
 let lastMainTab = "communaute";
+let frigoAutoOpened = false; // ouvre automatiquement le sélecteur d'ingrédients la première fois qu'on arrive sur un frigo vide, pour éviter un grand espace vide sans rien à faire
 // ---- Suppression définitive du compte (Paramètres → tout en bas, sous "Se déconnecter") ----
 const DELETE_CONFIRM_PHRASE = "je supprime mon compte";
 function closeDeleteAccountModal(){
@@ -5835,7 +6005,7 @@ document.getElementById("profileSearchInput").addEventListener("input", (e) => {
           return `
             <div class="profile-search-item" data-user-id="${p.id}">
               <div class="feed-avatar" style="${avatarStyle}width:32px;height:32px;">${p.avatar_url ? "" : (p.username || "?")[0].toUpperCase()}</div>
-              <span>${p.username}</span>
+              <span>${escAttr(p.username)}</span>
             </div>`;
         }).join("");
       }
@@ -5901,7 +6071,9 @@ function switchTab(tab){
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "cuisiner") {
     if (selected.size === 0) {
-      document.getElementById("results").innerHTML = `<div class="state-msg">Ton frigo est vide 😕<br>Ajoute d'abord des ingrédients dans l'onglet "Mon frigo".</div>`;
+      document.getElementById("results").innerHTML = `<div class="state-msg">Ton frigo est vide 😕<br>Ajoute d'abord des ingrédients dans l'onglet "Mon frigo".<br><button type="button" class="rate-taste-btn" id="goToFridgeBtn" style="margin-top:10px;">→ Remplir mon frigo</button></div>`;
+      const goBtn = document.getElementById("goToFridgeBtn");
+      if (goBtn) goBtn.addEventListener("click", () => switchTab("frigo"));
     } else {
       searchRecipes();
     }
@@ -5912,14 +6084,29 @@ function switchTab(tab){
     renderMesPlats();
   } else if (tab === "communaute") {
     renderCommunaute();
+  } else if (tab === "frigo") {
+    // Frigo vide et jamais encore ouvert cette session : on ouvre directement le sélecteur d'ingrédients,
+    // pour éviter un grand espace vide sans rien à faire au premier passage.
+    if (selected.size === 0 && !frigoAutoOpened && document.getElementById("categories").hasAttribute("hidden")) {
+      frigoAutoOpened = true;
+      toggleFridgeAdd();
+    }
   }
 }
 document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click", () => {
   if (!currentUser && btn.dataset.tab !== "communaute") { showDiscoverScreen(); return; }
   switchTab(btn.dataset.tab);
 }));
-document.getElementById("discoverCtaBtn").addEventListener("click", () => switchTab("communaute"));
-document.getElementById("headerLoginBtn").addEventListener("click", () => switchTab("communaute"));
+function setAuthFormExpanded(expanded){
+  const banner = document.getElementById("authCompactBanner");
+  const card = document.getElementById("loginAuthCard");
+  if (!banner || !card) return;
+  banner.hidden = expanded;
+  card.hidden = !expanded;
+}
+document.getElementById("authCompactBanner").addEventListener("click", () => setAuthFormExpanded(true));
+document.getElementById("discoverCtaBtn").addEventListener("click", () => { switchTab("communaute"); setAuthFormExpanded(true); });
+document.getElementById("headerLoginBtn").addEventListener("click", () => { switchTab("communaute"); setAuthFormExpanded(true); });
 updateMenuBadge();
 updateWeekMenuBadge();
 updateSavedMenuBadge();
@@ -5995,7 +6182,23 @@ const APP_CHANGELOG = [
       "Nouvelle icône sur l'écran d'accueil et l'écran de démarrage.",
       "Passage d'un onglet à l'autre plus fluide, avec un léger fondu au lieu d'un changement brutal.",
       "Typographie retravaillée : titres plus affirmés, chiffres du Bilan plus lisibles, meilleur confort de lecture partout.",
-      "Petites touches de finition : retour tactile sur les boutons et cartes, écrans vides plus accueillants, badge \"cuisiné X fois\" mieux placé sur les fiches."
+      "Petites touches de finition : retour tactile sur les boutons et cartes, écrans vides plus accueillants, badge \"cuisiné X fois\" mieux placé sur les fiches.",
+      "Frigo vide : le sélecteur d'ingrédients s'ouvre maintenant directement au premier passage, au lieu d'un grand espace vide.",
+      "Dans Cuisiner, un bouton \"Remplir mon frigo\" permet d'y aller en un tap quand le frigo est vide.",
+      "Communauté : le fil public est maintenant visible même sans compte (aperçu des publications), comme prévu à l'origine — avant, la page de connexion cachait tout le fil.",
+      "Un clic sur \"j'aime\", \"enregistrer\" ou \"commenter\" sans être connecté propose maintenant de se connecter, au lieu de ne rien faire.",
+      "Le formulaire de connexion sur Communauté est maintenant replié par défaut (petite bannière), pour laisser plus de place aux publications — il s'ouvre en un tap.",
+      "Boutons \"→ Aller cuisiner\" ajoutés sur les écrans vides de Mes plats, Ma semaine et Recettes enregistrées, pour agir en un tap plutôt que de chercher soi-même où aller.",
+      "Petite animation sur le cœur ❤️ quand on aime une publication ou un commentaire, pour un retour plus vivant.",
+      "Le message \"Recette marquée comme faite\" devient une vraie carte de félicitations, avec une petite animation et un bouton pour continuer à cuisiner tout de suite.",
+      "Correction : supprimer un plat cuisiné ou une recette perso demande maintenant une confirmation — avant, un tap sur la croix supprimait immédiatement et définitivement, sans possibilité de revenir en arrière.",
+      "Accessibilité : les boutons \"j'aime\" (publications et commentaires) sont maintenant correctement annoncés par les lecteurs d'écran.",
+      "Sécurité : si le stockage du téléphone est plein, l'enregistrement d'une recette perso avec photo affiche maintenant un message clair au lieu d'échouer silencieusement.",
+      "Les messages d'alerte lors du tag d'un pseudo (introuvable ou tags non autorisés) utilisent maintenant le style Olymi au lieu de la fenêtre grise du téléphone.",
+      "Les 5 fenêtres de confirmation avant suppression (publication, commentaire, dossier, plat, recette perso) utilisent maintenant le style Olymi au lieu de la fenêtre native du téléphone.",
+      "Chargement différé des photos dans les listes (fil, résultats de recherche, Ma semaine, recettes enregistrées, Mes plats, Mes recettes) : les images se chargent maintenant au fur et à mesure du défilement, pour un affichage plus rapide et moins de données consommées.",
+      "Un petit bandeau prévient maintenant quand le téléphone perd la connexion internet.",
+      "Sécurité importante : les pseudos, titres de publication et recettes perso (titre, ingrédients, étapes) sont maintenant systématiquement nettoyés avant affichage, pour empêcher qu'un contenu malveillant s'exécute chez les autres utilisateurs qui les consultent."
     ]
   },
   {
