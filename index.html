@@ -756,7 +756,9 @@
   @keyframes likePop{0%{transform:scale(1);}35%{transform:scale(1.4);}60%{transform:scale(.92);}100%{transform:scale(1);}}
   .like-icon.like-pop{animation:likePop .35s cubic-bezier(.34,1.56,.64,1);}
   @media (prefers-reduced-motion: reduce){.like-icon.like-pop{animation:none;}}
-  .save-btn{background:none;border:none;font-size:16px;cursor:pointer;color:var(--ink-dim);margin-left:auto;opacity:.4;filter:grayscale(1);}
+  .share-post-btn{background:none;border:none;font-size:16px;cursor:pointer;color:var(--ink-dim);margin-left:auto;padding:0;}
+  .share-post-btn:active{opacity:.6;}
+  .save-btn{background:none;border:none;font-size:16px;cursor:pointer;color:var(--ink-dim);opacity:.4;filter:grayscale(1);}
   .save-btn.saved{opacity:1;filter:none;}
   .detail-save-btn{font-size:22px;flex-shrink:0;margin-left:8px;padding:2px;}
   .bilan-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;}
@@ -1244,6 +1246,41 @@ function showToast(message){
   toast.classList.add("show");
   clearTimeout(appToastTimeout);
   appToastTimeout = setTimeout(() => toast.classList.remove("show"), 4000);
+}
+
+// ---- Partage d'une publication (façon Instagram) : ouvre le menu de partage natif du téléphone ----
+// (Messages, WhatsApp, e-mail...) avec la photo si possible, sinon juste le texte + un lien vers l'appli.
+async function sharePostToDevice(post){
+  const title = post.post_title || post.recipe_title;
+  const text = `${title}${post.comment ? "\n" + post.comment : ""}\n\nDécouvert sur Olymi 🍽️`;
+  const url = window.location.origin + window.location.pathname;
+  const imageUrl = post.hide_photo ? null : (post.photo_url || post.recipe_image);
+
+  if (!navigator.share) {
+    // Pas de menu de partage natif disponible (ex. certains navigateurs de bureau) : on copie le texte.
+    try {
+      await navigator.clipboard.writeText(`${text}\n${url}`);
+      showToast("Texte copié — colle-le où tu veux le partager.");
+    } catch (e) {
+      showToast("Le partage n'est pas disponible sur ce navigateur.");
+    }
+    return;
+  }
+
+  let shareData = { title, text, url };
+  if (imageUrl && navigator.canShare) {
+    try {
+      const resp = await fetch(imageUrl);
+      const blob = await resp.blob();
+      const file = new File([blob], "recette-olymi.jpg", { type: blob.type || "image/jpeg" });
+      if (navigator.canShare({ files: [file] })) shareData = { title, text, files: [file] };
+    } catch (e) { /* pas grave : on partage sans la photo */ }
+  }
+  try {
+    await navigator.share(shareData);
+  } catch (e) {
+    if (e.name !== "AbortError") console.warn("Partage impossible :", e);
+  }
 }
 
 // ---- Bandeau "hors ligne" : purement informatif, ne rend pas l'appli utilisable hors connexion ----
@@ -2172,6 +2209,7 @@ function renderFeedCardHTML(post){
       <div class="feed-actions">
         <button type="button" class="like-btn${liked ? " liked" : ""}" data-liked="${liked}" aria-label="${liked ? "Retirer le j'aime" : "J'aime cette publication"} (${post.likes.length})"><span class="like-icon">${liked ? "❤️" : "🤍"}</span> <span class="like-count">${post.likes.length}</span></button>
         <span class="feed-comment-count" style="color:var(--ink-dim);font-size:13px;">💬 ${comments.length}</span>
+        <button type="button" class="share-post-btn" data-post-id="${post.id}" aria-label="Partager cette publication">📤</button>
         <button type="button" class="save-btn${isSaved ? " saved" : ""}" data-saved="${isSaved}" data-recipe-id="${post.recipe_id}" aria-label="Enregistrer la recette">🔖</button>
       </div>
       <div class="feed-comments">
@@ -2366,6 +2404,12 @@ function initFeedInteractions(container, returnTo, renderEmptyFn){
     if (saveBtn) {
       if (!currentUser) { showDiscoverScreen(); return; }
       openSaveRecipeModal(post.recipe_id, post.recipe_title, post.hide_photo ? null : (post.photo_url || post.recipe_image), post.difficulty);
+      return;
+    }
+
+    const sharePostBtn = e.target.closest(".share-post-btn");
+    if (sharePostBtn) {
+      sharePostToDevice(post);
       return;
     }
 
@@ -6198,7 +6242,8 @@ const APP_CHANGELOG = [
       "Les 5 fenêtres de confirmation avant suppression (publication, commentaire, dossier, plat, recette perso) utilisent maintenant le style Olymi au lieu de la fenêtre native du téléphone.",
       "Chargement différé des photos dans les listes (fil, résultats de recherche, Ma semaine, recettes enregistrées, Mes plats, Mes recettes) : les images se chargent maintenant au fur et à mesure du défilement, pour un affichage plus rapide et moins de données consommées.",
       "Un petit bandeau prévient maintenant quand le téléphone perd la connexion internet.",
-      "Sécurité importante : les pseudos, titres de publication et recettes perso (titre, ingrédients, étapes) sont maintenant systématiquement nettoyés avant affichage, pour empêcher qu'un contenu malveillant s'exécute chez les autres utilisateurs qui les consultent."
+      "Sécurité importante : les pseudos, titres de publication et recettes perso (titre, ingrédients, étapes) sont maintenant systématiquement nettoyés avant affichage, pour empêcher qu'un contenu malveillant s'exécute chez les autres utilisateurs qui les consultent.",
+      "Nouveau bouton \"Partager\" (📤) sur chaque publication du fil, pour l'envoyer par message, WhatsApp, e-mail... avec la photo quand c'est possible."
     ]
   },
   {
