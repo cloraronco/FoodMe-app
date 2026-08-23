@@ -266,6 +266,7 @@
     padding:4px 10px;border-radius:999px;
   }
   .match.ok{color:var(--basil-ink);background:var(--basil-tint);}
+  .match.bad{color:var(--tomato-dark);background:var(--tomato-tint);}
   .stock-check-box{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0;}
   .stock-check-box .rate-taste-btn{margin-top:10px;}
   .recipe-detail{
@@ -1407,18 +1408,46 @@ async function uploadAvatarPhoto(dataUrl){
   return sb.storage.from("recipe-photos").getPublicUrl(path).data.publicUrl + `?t=${Date.now()}`;
 }
 
-// ---- Synchronisation frigo / Mes plats / liste de courses avec le compte (V2) ----
+// ---- Synchronisation frigo / Mes plats / liste de courses avec le compte (V3 pour le frigo) ----
+// Depuis le 23/08/2026, le frigo (stock, quantités, DLC) est stocké ligne par ligne dans la table
+// "inventory_items" (avec confiance et source par article) au lieu d'un simple JSON global — ça permet
+// de préparer les futures fonctionnalités (frigo vivant, portions apprises) sans tout redévelopper.
 // Tant que personne n'est connecté, tout reste 100% local, exactement comme avant.
+async function pullFridgeFromInventoryItems(){
+  const { data, error } = await sb.from("inventory_items")
+    .select("ingredient_id, quantity, unit, expiry_date")
+    .eq("owner_id", currentUser.id);
+  if (error) throw error;
+  return data || [];
+}
 async function pullFromCloudAndMerge(){
   if (!sb || !currentUser) return;
   try {
     const { data } = await sb.from("user_data").select("*").eq("id", currentUser.id).maybeSingle();
     if (data) {
       // Le compte a déjà des données sauvegardées : elles deviennent la référence sur cet appareil
+      let items = await pullFridgeFromInventoryItems();
+      if (items.length === 0 && (data.fridge || []).length > 0) {
+        // Filet de sécurité : compte pas encore migré vers "inventory_items" (ancien format JSON encore
+        // présent) — on le reprend tel quel, et le prochain envoi vers le cloud le migrera automatiquement.
+        const legacyQuantities = data.fridge_quantities || {};
+        const legacyExpiry = data.expiry || {};
+        items = (data.fridge || []).map(v => ({
+          ingredient_id: v,
+          quantity: legacyQuantities[v] ? legacyQuantities[v].amount : null,
+          unit: legacyQuantities[v] ? legacyQuantities[v].unit : null,
+          expiry_date: legacyExpiry[v] || null
+        }));
+      }
       selected.clear();
-      (data.fridge || []).forEach(v => selected.add(v));
-      saveExpiryDates(data.expiry || {});
-      saveFridgeQuantities(data.fridge_quantities || {});
+      const quantities = {}, expiry = {};
+      items.forEach(it => {
+        selected.add(it.ingredient_id);
+        if (it.quantity != null && it.unit) quantities[it.ingredient_id] = { amount: Number(it.quantity), unit: it.unit };
+        if (it.expiry_date) expiry[it.ingredient_id] = it.expiry_date;
+      });
+      saveFridgeQuantities(quantities);
+      saveExpiryDates(expiry);
       saveCookedDishes(data.cooked_dishes || []);
       saveShoppingList(data.shopping_list || []);
       saveWeekRecipes(data.week_recipes || []);
@@ -1450,14 +1479,33 @@ function scheduleCloudSync(){
   clearTimeout(cloudSyncTimer);
   cloudSyncTimer = setTimeout(pushToCloud, 1200);
 }
+async function pushFridgeToInventoryItems(){
+  const quantities = loadFridgeQuantities();
+  const expiry = loadExpiryDates();
+  const rows = Array.from(selected).map(value => ({
+    owner_id: currentUser.id,
+    ingredient_id: value,
+    quantity: quantities[value] ? quantities[value].amount : null,
+    unit: quantities[value] ? quantities[value].unit : null,
+    expiry_date: expiry[value] || null,
+    confidence: 1.0,
+    source: "manual",
+    updated_at: new Date().toISOString()
+  }));
+  // Remplacement complet (comme l'ancien tableau JSON) : plus simple et fiable qu'un diff ligne à ligne
+  // pour un frigo qui reste petit (quelques dizaines d'ingrédients).
+  await sb.from("inventory_items").delete().eq("owner_id", currentUser.id);
+  if (rows.length) {
+    const { error } = await sb.from("inventory_items").insert(rows);
+    if (error) throw error;
+  }
+}
 async function pushToCloud(){
   if (!sb || !currentUser) return;
   try {
+    await pushFridgeToInventoryItems();
     await sb.from("user_data").upsert({
       id: currentUser.id,
-      fridge: Array.from(selected),
-      expiry: loadExpiryDates(),
-      fridge_quantities: loadFridgeQuantities(),
       cooked_dishes: loadCookedDishes(),
       shopping_list: loadShoppingList(),
       week_recipes: loadWeekRecipes(),
@@ -2959,27 +3007,52 @@ function findFridgeQuantityForIngredient(ingName){
   }
   return null;
 }
-// Compare, pour une recette perso et un nombre de personnes donné, les quantités nécessaires
-// (ingrédients avec quantité précise renseignée) au stock du frigo. Renvoie ce qu'il manque.
-function computeStockFeasibility(recipe, servings){
-  const ratio = servings / BASE_SERVINGS;
+// ---- FeasibilityEngine : un seul calcul de faisabilité pour toutes les recettes (catalogue TheMealDB
+// et recettes perso), qui remplace les deux logiques séparées d'avant (présence a/a pas d'un côté,
+// quantités précises de l'autre). Pour chaque ingrédient non "basique" (sel, poivre...) :
+// - absent du frigo → "manquant" ;
+// - présent, et quantité connue des deux côtés (recette perso avec quantité + réglage Premium actif) →
+//   comparaison des quantités, insuffisant possible même si l'ingrédient est bien au frigo ;
+// - présent sans quantité connue → considéré disponible (comportement d'avant, inchangé).
+// Statut : 🟢 rien ne manque, 🔴 plus de la moitié des ingrédients manquent (courses obligatoires),
+// 🟠 le reste (faisable avec un peu de courses ciblées).
+function computeFeasibility(ingredients, servings){
+  const quantitiesOn = isQuantitiesActive();
+  const ratio = (servings || BASE_SERVINGS) / BASE_SERVINGS;
+  const fridgeValues = Array.from(selected);
+  const relevant = (ingredients || []).filter(ing => ing.name && !isBasic(normalize(ing.name)));
+  const missing = [];
   const shortages = [];
   let quantifiedCount = 0;
-  (recipe.ingredients || []).forEach(ing => {
-    if (ing.amount == null || !ing.unit) return;
+  relevant.forEach(ing => {
+    if (!ingredientInFridge(ing.name, fridgeValues)) { missing.push(ing); return; }
+    if (!quantitiesOn || ing.amount == null || !ing.unit) return;
     quantifiedCount++;
     const needed = toBaseQuantity(ing.amount * ratio, ing.unit);
     if (!needed) return;
     const stock = findFridgeQuantityForIngredient(ing.name);
     const available = stock ? toBaseQuantity(stock.amount, stock.unit) : null;
-    const availableValue = (available && available.family === needed.family) ? available.value : 0;
-    const missing = needed.value - availableValue;
-    if (missing > 0.001) {
-      const disp = fromBaseQuantity(missing, needed.family);
+    if (!available || available.family !== needed.family) return; // quantité au frigo pas renseignée/comparable : pas de fausse alerte
+    const shortfall = needed.value - available.value;
+    if (shortfall > 0.001) {
+      const disp = fromBaseQuantity(shortfall, needed.family);
       shortages.push({ name: ing.name, amount: disp.amount, unit: disp.unit });
     }
   });
-  return { quantifiedCount, shortages };
+  let status = "green";
+  if (missing.length > 0 || shortages.length > 0) {
+    status = (relevant.length > 0 && missing.length / relevant.length > 0.5) ? "red" : "orange";
+  }
+  return { status, missing, shortages, quantifiedCount, totalRelevant: relevant.length };
+}
+const FEASIBILITY_ICON = { green: "🟢", orange: "🟠", red: "🔴" };
+// Texte court pour les cartes de résultats / fiches recette, cohérent quel que soit le type de recette.
+function feasibilityText(f){
+  if (f.status === "green") return "🟢 Tu as tout ce qu'il faut";
+  const parts = [];
+  if (f.missing.length > 0) parts.push(`il te manque ${f.missing.length} ingrédient${f.missing.length > 1 ? "s" : ""}`);
+  if (f.shortages.length > 0) parts.push(`${f.shortages.length} quantité${f.shortages.length > 1 ? "s" : ""} insuffisante${f.shortages.length > 1 ? "s" : ""}`);
+  return `${FEASIBILITY_ICON[f.status]} ${cap(parts.join(" · "))}`;
 }
 
 function getWasteSavedCount(){ return parseInt(localStorage.getItem("foodme_waste_saved") || "0", 10); }
@@ -3692,10 +3765,10 @@ function renderRecipeResults(){
             ${r.soonestExpiryDays !== null ? `<span class="badge">🔥 J-${Math.max(0, r.soonestExpiryDays)}</span>` : ""}
             ${!r.titleComplete ? `<span class="badge">⚠️ non traduit</span>` : ""}
           </div>
-          <div class="match ${r.missing.length === 0 ? 'ok' : ''}">
-            ${r.missing.length === 0
-              ? "✅ Faisable avec ce que tu as"
-              : `Il te manque ${r.missing.length} ingrédient${r.missing.length > 1 ? "s" : ""} : ${r.missing.slice(0, 3).map(m => translateIngredient(m.name)).join(", ")}${r.missing.length > 3 ? "…" : ""}`}
+          <div class="match ${r.feasibility.status === 'green' ? 'ok' : r.feasibility.status === 'red' ? 'bad' : ''}">
+            ${r.feasibility.status === 'green'
+              ? "🟢 Faisable avec ce que tu as"
+              : `${FEASIBILITY_ICON[r.feasibility.status]} Il te manque ${r.missing.length} ingrédient${r.missing.length > 1 ? "s" : ""}${r.missing.length > 0 ? " : " + r.missing.slice(0, 3).map(m => translateIngredient(m.name)).join(", ") + (r.missing.length > 3 ? "…" : "") : ""}`}
           </div>
         </div>
       </div>
@@ -3743,10 +3816,7 @@ async function fetchCommunityCustomResults(ingredients, titleQuery){
     if (error || !data) return [];
     return data.map(row => {
       const recipeIngredients = row.ingredients || [];
-      const missing = recipeIngredients.filter(({ name }) => {
-        const n = normalize(name);
-        return name && !isBasic(n) && !ingredientInFridge(name, ingredients);
-      });
+      const feasibility = computeFeasibility(recipeIngredients, BASE_SERVINGS);
       return {
         // category reprend le type de plat de la recette perso (ex: "Dessert") — permet de réutiliser
         // le même filtre "Pâtisserie" que pour les recettes du catalogue TheMealDB (DIET_FILTERS.patisserie).
@@ -3754,7 +3824,8 @@ async function fetchCommunityCustomResults(ingredients, titleQuery){
         titleFr: row.title,
         prepMinutes: row.prep_minutes || null,
         totalMinutes: row.total_minutes || null,
-        missing,
+        missing: feasibility.missing,
+        feasibility,
         totalIngredients: recipeIngredients.length,
         soonestExpiryDays: null,
         titleComplete: true,
@@ -3839,10 +3910,7 @@ async function scoreAndTranslate(meals, ingredients){
   const expiry = isAntiWasteActive() ? loadExpiryDates() : {};
 
   const scored = meals.map(toInternalRecipe).map(recipe => {
-    const missing = recipe.ingredients.filter(({ name }) => {
-      const n = normalize(name);
-      return !isBasic(n) && !ingredients.some(v => ingredientNamesMatch(name, v));
-    });
+    const feasibility = computeFeasibility(recipe.ingredients, BASE_SERVINGS);
     recipeCache.set(recipe.id, recipe);
     const { prepMinutes, totalMinutes } = estimateTimes(recipe.instructions, recipe.ingredients.length);
     // Ingrédients de la recette qu'on a déjà et dont une date de péremption est renseignée (anti-gaspi) → la plus proche
@@ -3853,7 +3921,7 @@ async function scoreAndTranslate(meals, ingredients){
       })
       .filter(d => d !== null);
     const soonestExpiryDays = usedExpiryDays.length ? Math.min(...usedExpiryDays) : null;
-    return { recipe, totalIngredients: recipe.ingredients.length, missing, prepMinutes, totalMinutes, soonestExpiryDays };
+    return { recipe, totalIngredients: recipe.ingredients.length, missing: feasibility.missing, feasibility, prepMinutes, totalMinutes, soonestExpiryDays };
   }).sort((a, b) => a.missing.length - b.missing.length || a.totalIngredients - b.totalIngredients);
 
   // Traduction des titres (seulement les résultats affichés, pas tous les candidats, pour économiser le quota)
@@ -3923,10 +3991,10 @@ async function showRecipeDetail(id, returnTo){
     return;
   }
 
-  const missing = recipe.ingredients.filter(({ name }) => {
-    const n = normalize(name);
-    return !isBasic(n) && !Array.from(selected).some(v => ingredientNamesMatch(name, v));
-  });
+  // Les recettes du catalogue TheMealDB n'ont pas de quantité exploitable par ingrédient (juste une
+  // mesure en texte libre) : le nombre de personnes n'a donc aucun effet sur la faisabilité ici.
+  const feasibility = computeFeasibility(recipe.ingredients, BASE_SERVINGS);
+  const missing = feasibility.missing;
 
   const rawSteps = splitInstructionsIntoSteps(recipe.instructions);
   const stepTimers = rawSteps.map(detectTimer);
@@ -3960,8 +4028,8 @@ async function showRecipeDetail(id, returnTo){
         <span class="badge" title="Temps total, du début à l'assiette">⏱ ~${totalMinutes} min</span>
         ${cookCount ? `<span class="badge" title="Nombre de fois cuisinée par la communauté, partagée ou non">🍳 Cuisinée ${cookCount} fois</span>` : ""}
       </div>
-      <div class="match ${missing.length === 0 ? 'ok' : ''}" style="margin-bottom:8px;">
-        ${missing.length === 0 ? "✅ Tu as tout ce qu'il faut" : `Il te manque : ${missing.map(m => translateIngredient(m.name)).join(", ")}`}
+      <div class="match ${feasibility.status === 'green' ? 'ok' : feasibility.status === 'red' ? 'bad' : ''}" style="margin-bottom:8px;">
+        ${feasibility.status === 'green' ? "🟢 Tu as tout ce qu'il faut" : `${FEASIBILITY_ICON[feasibility.status]} Il te manque : ${missing.map(m => translateIngredient(m.name)).join(", ")}`}
       </div>
       ${missing.length > 0 ? `<button type="button" class="rate-taste-btn" id="addMissingToListBtn">🛒 Ajouter ces ingrédients à la liste de courses</button>` : ""}
       <div class="servings-stepper">
@@ -4912,6 +4980,22 @@ function attachDoneFlow(recipe){
   });
 }
 
+// Trace chaque ingrédient marqué "utilisé" dans inventory_consumption_events (traçabilité de la
+// consommation confirmée par une recette Olymi — sert de base aux futures fonctionnalités : confiance
+// du stock, portions apprises). Best-effort : ne bloque jamais la suite si le cloud est indisponible.
+async function logConsumptionEvents(usedUpValues){
+  if (!sb || !currentUser || usedUpValues.length === 0) return;
+  const quantities = loadFridgeQuantities();
+  try {
+    await sb.from("inventory_consumption_events").insert(usedUpValues.map(v => ({
+      owner_id: currentUser.id,
+      ingredient_id: v,
+      quantity: quantities[v] ? quantities[v].amount : null,
+      unit: quantities[v] ? quantities[v].unit : null,
+      source: "olymi_confirmed"
+    })));
+  } catch (e) { console.warn("Journal de consommation impossible pour le moment :", e); }
+}
 function finishRecipe(usedUpValues, shareResult){
   if (isAntiWasteActive()) {
     const expiry = loadExpiryDates();
@@ -4923,6 +5007,7 @@ function finishRecipe(usedUpValues, shareResult){
     saveExpiryDates(expiry);
     if (saved > 0) incrementWasteSaved(saved);
   }
+  logConsumptionEvents(usedUpValues);
   usedUpValues.forEach(v => selected.delete(v));
   renderCategories();
   updateSearchBtn();
@@ -5481,27 +5566,35 @@ function saveNewCustomRecipe(){
   renderCustomRecipes();
 }
 
-// Bloc "selon ton stock" affiché sur une fiche recette perso : compare les quantités précisées
-// à la création de la recette au stock du frigo (fonctionnalité Premium, recettes perso uniquement).
-function renderStockCheckHTML(recipe, servings){
-  if (!isQuantitiesActive()) return "";
-  const { quantifiedCount, shortages } = computeStockFeasibility(recipe, servings);
-  if (quantifiedCount === 0) return "";
-  return `
-    <div class="stock-check-box">
-      <div class="settings-label" style="margin-bottom:6px;">📏 Selon ton stock actuel</div>
-      ${shortages.length === 0
-        ? `<div class="match ok">✅ Tu as assez pour ${servings} personne${servings > 1 ? "s" : ""}</div>`
-        : `<div class="match">Il te manque, pour ${servings} personne${servings > 1 ? "s" : ""} : ${shortages.map(s => `${s.amount}${QUANTITY_UNITS[s.unit]} de ${translateIngredient(s.name)}`).join(", ")}</div>
-           <button type="button" class="rate-taste-btn" id="addStockShortageToListBtn">🛒 Ajouter uniquement ce qu'il manque</button>`}
-    </div>`;
+// Bloc de faisabilité affiché sur une fiche recette perso : un seul badge combinant présence et,
+// quand la recette et le réglage Premium le permettent, comparaison de quantités avec le stock.
+function shoppingListItemFrom(ing){
+  if (ing.amount != null && ing.unit) return { name: ing.name, measure: `${ing.amount}${QUANTITY_UNITS[ing.unit]}` };
+  return { name: ing.name, measure: ing.measure };
 }
-function attachStockCheckListeners(container, recipe, servings){
-  const btn = container.querySelector("#addStockShortageToListBtn");
+function renderFeasibilityBoxHTML(feasibility, servings){
+  const cls = feasibility.status === "green" ? "ok" : feasibility.status === "red" ? "bad" : "";
+  const hasIssues = feasibility.missing.length > 0 || feasibility.shortages.length > 0;
+  let text;
+  if (feasibility.status === "green") {
+    text = feasibility.quantifiedCount > 0 ? `🟢 Tu as assez pour ${servings} personne${servings > 1 ? "s" : ""}` : "🟢 Tu as tout ce qu'il faut";
+  } else {
+    const parts = [];
+    if (feasibility.missing.length > 0) parts.push(`il te manque ${feasibility.missing.map(m => translateIngredient(m.name)).join(", ")}`);
+    if (feasibility.shortages.length > 0) parts.push(`pas assez de ${feasibility.shortages.map(s => `${s.amount}${QUANTITY_UNITS[s.unit]} de ${translateIngredient(s.name)}`).join(", ")}`);
+    text = `${FEASIBILITY_ICON[feasibility.status]} ${cap(parts.join(" et "))}`;
+  }
+  return `
+    <div class="match ${cls}" style="margin-bottom:8px;">${text}</div>
+    ${hasIssues ? `<button type="button" class="rate-taste-btn" id="addMissingToListBtn">🛒 Ajouter ce qu'il manque à la liste de courses</button>` : ""}`;
+}
+function attachFeasibilityBoxListeners(container, feasibility){
+  const btn = container.querySelector("#addMissingToListBtn");
   if (!btn) return;
   btn.addEventListener("click", () => {
-    const { shortages } = computeStockFeasibility(recipe, servings);
-    addToShoppingList(shortages.map(s => ({ name: s.name, measure: `${s.amount}${QUANTITY_UNITS[s.unit]}` })));
+    const items = feasibility.missing.map(shoppingListItemFrom)
+      .concat(feasibility.shortages.map(s => ({ name: s.name, measure: `${s.amount}${QUANTITY_UNITS[s.unit]}` })));
+    addToShoppingList(items);
     btn.textContent = "✅ Ajoutés à la liste de courses";
     btn.disabled = true;
   });
@@ -5560,12 +5653,8 @@ async function showCustomRecipeDetail(id, returnTo){
   const cookCount = await fetchCookCount(recipe.id);
   if (requestId !== cuisinerRequestId) return; // une autre recette a été ouverte entre-temps
 
-  const missing = recipe.ingredients.filter(({ name }) => {
-    const n = normalize(name);
-    return name && !isBasic(n) && !ingredientInFridge(name, Array.from(selected));
-  });
-
   let servings = BASE_SERVINGS;
+  let feasibility = computeFeasibility(recipe.ingredients, servings);
   const isSaved = isRecipeSaved(recipe.id);
 
   resultsEl.innerHTML = `
@@ -5592,10 +5681,7 @@ async function showCustomRecipeDetail(id, returnTo){
         ${recipe.temperature ? `<span class="badge">${recipe.temperature === "Chaud" ? "🔥 Chaud" : "❄️ Froid"}</span>` : ""}
         ${(recipe.equipment || []).map(eq => `<span class="badge">${eq}</span>`).join("")}
       </div>` : ""}
-      <div class="match ${missing.length === 0 ? 'ok' : ''}" style="margin-bottom:8px;">
-        ${missing.length === 0 ? "✅ Tu as tout ce qu'il faut" : `Il te manque : ${missing.map(m => translateIngredient(m.name)).join(", ")}`}
-      </div>
-      ${missing.length > 0 ? `<button type="button" class="rate-taste-btn" id="addMissingToListBtn">🛒 Ajouter ces ingrédients à la liste de courses</button>` : ""}
+      <div id="feasibilityBox">${renderFeasibilityBoxHTML(feasibility, servings)}</div>
       <div class="servings-stepper">
         <span>Pour</span>
         <button type="button" id="servingsMinus" aria-label="Moins de portions">−</button>
@@ -5603,7 +5689,6 @@ async function showCustomRecipeDetail(id, returnTo){
         <button type="button" id="servingsPlus" aria-label="Plus de portions">+</button>
         <span>personnes</span>
       </div>
-      <div id="stockCheckBox">${renderStockCheckHTML(recipe, servings)}</div>
       <button type="button" class="week-add-detail-btn${isInWeek(recipe.id) ? " added" : ""}" id="weekAddDetailBtn">${isInWeek(recipe.id) ? "✅ Dans ma semaine (retirer)" : "📅 Ajouter à ma semaine"}</button>
       <h4>Ingrédients</h4>
       <ul id="ingredientsList">${renderIngredientsHTML(recipe, servings)}</ul>
@@ -5647,24 +5732,17 @@ async function showCustomRecipeDetail(id, returnTo){
   attachDoneFlow(recipe);
   const ingredientsListEl = document.getElementById("ingredientsList");
   const servingsCountEl = document.getElementById("servingsCount");
-  const stockCheckBoxEl = document.getElementById("stockCheckBox");
+  const feasibilityBoxEl = document.getElementById("feasibilityBox");
   const updateServings = (delta) => {
     servings = Math.max(1, Math.min(20, servings + delta));
     servingsCountEl.textContent = servings;
     ingredientsListEl.innerHTML = renderIngredientsHTML(recipe, servings);
-    if (stockCheckBoxEl) { stockCheckBoxEl.innerHTML = renderStockCheckHTML(recipe, servings); attachStockCheckListeners(stockCheckBoxEl, recipe, servings); }
+    feasibility = computeFeasibility(recipe.ingredients, servings);
+    if (feasibilityBoxEl) { feasibilityBoxEl.innerHTML = renderFeasibilityBoxHTML(feasibility, servings); attachFeasibilityBoxListeners(feasibilityBoxEl, feasibility); }
   };
   document.getElementById("servingsMinus").addEventListener("click", () => updateServings(-1));
   document.getElementById("servingsPlus").addEventListener("click", () => updateServings(1));
-  if (stockCheckBoxEl) attachStockCheckListeners(stockCheckBoxEl, recipe, servings);
-  const addMissingBtn = document.getElementById("addMissingToListBtn");
-  if (addMissingBtn) {
-    addMissingBtn.addEventListener("click", () => {
-      addToShoppingList(missing);
-      addMissingBtn.textContent = "✅ Ajoutés à la liste de courses";
-      addMissingBtn.disabled = true;
-    });
-  }
+  if (feasibilityBoxEl) attachFeasibilityBoxListeners(feasibilityBoxEl, feasibility);
   const weekAddDetailBtn = document.getElementById("weekAddDetailBtn");
   weekAddDetailBtn.addEventListener("click", () => {
     const added = toggleWeekRecipe(recipe.id, recipe.title, recipe.image, servings);
