@@ -4229,7 +4229,7 @@ async function showRecipeDetail(id, returnTo){
   });
   attachStepAccordion(resultsEl);
   attachStepTimers(resultsEl);
-  attachDoneFlow(recipe);
+  attachDoneFlow(recipe, servings);
   const ingredientsListEl = document.getElementById("ingredientsList");
   const servingsCountEl = document.getElementById("servingsCount");
   const updateServings = (delta) => {
@@ -4947,7 +4947,7 @@ async function fetchCookCount(recipeId){
 }
 
 // ---- Après avoir cuisiné : note la difficulté, puis demande quels ingrédients sont épuisés ----
-function attachDoneFlow(recipe){
+function attachDoneFlow(recipe, servings){
   const resultsEl = document.getElementById("results");
   document.getElementById("doneBtn").addEventListener("click", () => {
     // Compteur anonyme "recette cuisinée" : envoyé même si la recette n'est jamais partagée ensuite.
@@ -4958,6 +4958,28 @@ function attachDoneFlow(recipe){
     const usedFromSelection = Array.from(selected).filter(v =>
       recipe.ingredients.some(({ name }) => ingredientNamesMatch(name, v))
     );
+    // Pour les ingrédients gardés (pas cochés "entièrement utilisé"), calcule ce que la recette a vraiment
+    // consommé quand c'est possible (recette perso avec quantité + quantités Premium actives + quantité
+    // connue au frigo) — pour décrémenter le stock au lieu de le laisser inchangé comme avant.
+    const quantitiesOn = isQuantitiesActive();
+    const fridgeQuantitiesAtCook = loadFridgeQuantities();
+    function computeConsumption(v){
+      if (!quantitiesOn) return null;
+      const ing = recipe.ingredients.find(({ name }) => name && ingredientNamesMatch(name, v));
+      if (!ing || ing.amount == null || !ing.unit) return null;
+      const stock = fridgeQuantitiesAtCook[v];
+      if (!stock) return null;
+      const ratio = (servings || BASE_SERVINGS) / BASE_SERVINGS;
+      const needed = toBaseQuantity(ing.amount * ratio, ing.unit);
+      const available = toBaseQuantity(stock.amount, stock.unit);
+      if (!needed || !available || needed.family !== available.family) return null;
+      const consumedBase = Math.min(needed.value, available.value);
+      const remainingBase = available.value - needed.value;
+      return {
+        consumed: fromBaseQuantity(consumedBase, needed.family),
+        remaining: remainingBase > 0.01 ? fromBaseQuantity(remainingBase, available.family) : null
+      };
+    }
     let difficulty = null;
     let capturedPhoto = null;
     let sharePhoto = { mode: "recipe", dataUrl: null }; // mode: "recipe" | "custom" | "none"
@@ -4981,9 +5003,13 @@ function attachDoneFlow(recipe){
         <button type="button" id="choosePhotoBtn" class="photo-btn">📷 Ajouter une photo</button>
         ${usedFromSelection.length > 0 ? `
         <h3 style="margin-top:22px;">Qu'est-ce qu'il ne te reste plus ?</h3>
-        <p class="hint">Coche les ingrédients que tu as entièrement utilisés — ils seront retirés de ton frigo.</p>
+        <p class="hint">Coche les ingrédients que tu as entièrement utilisés — ils seront retirés de ton frigo. Les autres verront leur quantité automatiquement réduite quand elle est connue.</p>
         <div class="chips" id="doneChips">
-          ${usedFromSelection.map(v => `<button class="chip" data-value="${v}">${translateIngredient(v)}</button>`).join("")}
+          ${usedFromSelection.map(v => {
+            const c = computeConsumption(v);
+            const hint = c ? (c.remaining ? ` <span class="qty-hint">(≈${c.remaining.amount}${QUANTITY_UNITS[c.remaining.unit]} restant)</span>` : ` <span class="qty-hint">(≈0 restant)</span>`) : "";
+            return `<button class="chip" data-value="${v}">${translateIngredient(v)}${hint}</button>`;
+          }).join("")}
         </div>` : ""}
         ${currentUser ? `
         <h3 style="margin-top:22px;">Partager avec la communauté ?</h3>
@@ -5117,36 +5143,46 @@ function attachDoneFlow(recipe){
 
     document.getElementById("confirmDoneBtn").addEventListener("click", async (e) => {
       addCookedDish(recipe, difficulty, capturedPhoto);
+      const consumptionMap = {};
+      usedFromSelection.forEach(v => { const c = computeConsumption(v); if (c) consumptionMap[v] = c; });
       const wantsShare = shareToggle && shareToggle.checked;
-      if (!wantsShare) { finishRecipe(Array.from(toRemove)); return; }
+      if (!wantsShare) { finishRecipe(Array.from(toRemove), consumptionMap); return; }
       e.target.disabled = true;
       e.target.textContent = "Publication…";
       const postTitle = document.getElementById("shareTitle").value.trim();
       const comment = document.getElementById("shareComment").value.trim();
       const taggedUsername = document.getElementById("shareTaggedUser").value.trim().replace(/^@/, "");
       const ok = await publishToCommunity(recipe, difficulty, sharePhoto, postTitle, comment, taggedUsername || null);
-      finishRecipe(Array.from(toRemove), ok);
+      finishRecipe(Array.from(toRemove), consumptionMap, ok);
     });
   });
 }
 
-// Trace chaque ingrédient marqué "utilisé" dans inventory_consumption_events (traçabilité de la
-// consommation confirmée par une recette Olymi — sert de base aux futures fonctionnalités : confiance
-// du stock, portions apprises). Best-effort : ne bloque jamais la suite si le cloud est indisponible.
-async function logConsumptionEvents(usedUpValues){
-  if (!sb || !currentUser || usedUpValues.length === 0) return;
-  const quantities = loadFridgeQuantities();
+// Trace chaque ingrédient consommé (entièrement retiré ou juste décrémenté) dans
+// inventory_consumption_events — traçabilité de la consommation confirmée par une recette Olymi, base
+// des futures fonctionnalités (confiance du stock, portions apprises). Best-effort : ne bloque jamais
+// la suite si le cloud est indisponible. `consumptionMap` donne la quantité réellement consommée quand
+// elle est connue (recette perso quantifiée) ; sinon la quantité reste inconnue (pas de fausse précision).
+async function logConsumptionEvents(usedUpValues, consumptionMap){
+  if (!sb || !currentUser) return;
+  consumptionMap = consumptionMap || {};
+  const ids = Array.from(new Set([...usedUpValues, ...Object.keys(consumptionMap)]));
+  if (ids.length === 0) return;
   try {
-    await sb.from("inventory_consumption_events").insert(usedUpValues.map(v => ({
-      owner_id: currentUser.id,
-      ingredient_id: v,
-      quantity: quantities[v] ? quantities[v].amount : null,
-      unit: quantities[v] ? quantities[v].unit : null,
-      source: "olymi_confirmed"
-    })));
+    await sb.from("inventory_consumption_events").insert(ids.map(v => {
+      const c = consumptionMap[v];
+      return {
+        owner_id: currentUser.id,
+        ingredient_id: v,
+        quantity: c ? c.consumed.amount : null,
+        unit: c ? c.consumed.unit : null,
+        source: "olymi_confirmed"
+      };
+    }));
   } catch (e) { console.warn("Journal de consommation impossible pour le moment :", e); }
 }
-function finishRecipe(usedUpValues, shareResult){
+function finishRecipe(usedUpValues, consumptionMap, shareResult){
+  consumptionMap = consumptionMap || {};
   if (isAntiWasteActive()) {
     const expiry = loadExpiryDates();
     let saved = 0;
@@ -5157,8 +5193,23 @@ function finishRecipe(usedUpValues, shareResult){
     saveExpiryDates(expiry);
     if (saved > 0) incrementWasteSaved(saved);
   }
-  logConsumptionEvents(usedUpValues);
+  logConsumptionEvents(usedUpValues, consumptionMap);
   usedUpValues.forEach(v => selected.delete(v));
+  // Décrémente la quantité des ingrédients gardés (pas cochés "entièrement utilisé") dont la
+  // consommation a pu être calculée — au lieu de les laisser inchangés comme avant. Une consommation
+  // réellement confirmée par une recette Olymi est le signal le plus fiable qui soit : on la traite
+  // comme une vérification (confiance remise à 1 au prochain sync).
+  if (Object.keys(consumptionMap).length > 0) {
+    const quantities = loadFridgeQuantities();
+    Object.keys(consumptionMap).forEach(v => {
+      if (usedUpValues.includes(v)) return; // déjà entièrement retiré du frigo, rien à décrémenter en plus
+      const { remaining } = consumptionMap[v];
+      if (remaining) quantities[v] = { amount: remaining.amount, unit: remaining.unit };
+      else delete quantities[v]; // estimation à ~0 mais l'ingrédient est gardé : on ne réaffirme pas une quantité qu'on ne connaît plus
+      dirtyIngredients.add(v);
+    });
+    saveFridgeQuantities(quantities);
+  }
   renderCategories();
   updateSearchBtn();
   updateFridgeSummary();
@@ -5886,7 +5937,7 @@ async function showCustomRecipeDetail(id, returnTo){
   if (authorLinkEl) authorLinkEl.addEventListener("click", () => showSecondaryView("profil", authorLinkEl.dataset.authorId));
   attachStepAccordion(resultsEl);
   attachStepTimers(resultsEl);
-  attachDoneFlow(recipe);
+  attachDoneFlow(recipe, servings);
   const ingredientsListEl = document.getElementById("ingredientsList");
   const servingsCountEl = document.getElementById("servingsCount");
   const feasibilityBoxEl = document.getElementById("feasibilityBox");
