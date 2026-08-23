@@ -544,6 +544,17 @@
   .verify-actions button{font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:4px 9px;background:#fff;cursor:pointer;}
   .verify-confirm{color:var(--basil-ink,#2F4B36);border-color:var(--sage,#8FA687)!important;}
   .verify-remove{color:var(--tomato-dark,#B23A2E);}
+  .leftover-banner{background:var(--saffron-tint);border:1px solid var(--saffron);border-radius:12px;padding:10px 12px;margin-bottom:12px;}
+  .leftover-banner-text{font-size:13px;font-weight:600;margin-bottom:8px;color:var(--saffron-ink);}
+  .leftover-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;font-size:13px;border-top:1px solid rgba(0,0,0,.06);}
+  .leftover-row:first-child{border-top:none;}
+  .leftover-info{display:flex;align-items:center;gap:8px;min-width:0;}
+  .leftover-info img{width:32px;height:32px;border-radius:8px;object-fit:cover;flex-shrink:0;}
+  .leftover-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .leftover-actions{display:flex;gap:6px;flex-shrink:0;}
+  .leftover-actions button{font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:4px 9px;background:#fff;cursor:pointer;}
+  .leftover-eat{color:var(--basil-ink);border-color:var(--basil)!important;}
+  .leftover-trash{color:var(--ink-dim);}
   .settings-row{
     display:flex;align-items:center;justify-content:space-between;gap:14px;
     background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;
@@ -915,6 +926,7 @@
     <button type="button" id="recipeNameSearchBtn">Chercher</button>
   </div>
   <button id="refreshCuisineBtn">Actualiser les recettes <span id="selectedCount"></span></button>
+  <div id="leftoversBanner"></div>
   <div id="results"></div>
 </main>
 
@@ -1513,6 +1525,7 @@ async function pullFromCloudAndMerge(){
       dirtyIngredients.clear();
       loadIngredientMetaCache();
       saveCookedDishes(data.cooked_dishes || []);
+      saveLeftovers(data.leftovers || []);
       saveShoppingList(data.shopping_list || []);
       saveWeekRecipes(data.week_recipes || []);
       saveCustomRecipes(data.custom_recipes || []);
@@ -1589,6 +1602,7 @@ async function pushToCloud(){
     await sb.from("user_data").upsert({
       id: currentUser.id,
       cooked_dishes: loadCookedDishes(),
+      leftovers: loadLeftovers(),
       shopping_list: loadShoppingList(),
       week_recipes: loadWeekRecipes(),
       custom_recipes: loadCustomRecipes(),
@@ -4269,6 +4283,63 @@ function saveCookedDishes(list){
   scheduleCloudSync();
 }
 
+// ---- Restes (portions cuisinées gardées pour plus tard) ----
+// Brique P0 restante côté "restes" : quand une recette est cuisinée pour plus de portions que ce qui est
+// mangé tout de suite, le reste doit pouvoir redevenir une recommandation plus tard, sans jamais devenir
+// une gestion de stock lourde — juste un rappel simple, local à l'appareil (pas de notion de foyer/réservation).
+function loadLeftovers(){
+  try { return JSON.parse(localStorage.getItem("foodme_leftovers") || "[]"); }
+  catch(e) { return []; }
+}
+function saveLeftovers(list){
+  localStorage.setItem("foodme_leftovers", JSON.stringify(list));
+  scheduleCloudSync();
+  renderLeftoversBanner();
+}
+function addLeftover(recipe, portions, photo){
+  if (!portions || portions <= 0) return;
+  const list = loadLeftovers();
+  const cookedAt = new Date();
+  const bestBefore = new Date(cookedAt.getTime() + 3 * 86400000); // 3 jours par défaut
+  list.unshift({
+    id: recipe.id + "_reste_" + cookedAt.getTime(),
+    recipeId: recipe.id, title: recipe.title, image: photo || recipe.image,
+    portions, cookedAt: cookedAt.toISOString(), bestBefore: bestBefore.toISOString()
+  });
+  saveLeftovers(list);
+}
+// Bandeau affiché en haut de "Cuisiner" tant qu'il reste des restes à manger — conforme à la spec P0
+// ("les restes doivent pouvoir être proposés dans les recommandations lorsqu'ils sont pertinents").
+function renderLeftoversBanner(){
+  const el = document.getElementById("leftoversBanner");
+  if (!el) return;
+  const list = loadLeftovers();
+  if (list.length === 0) { el.innerHTML = ""; return; }
+  el.innerHTML = `
+    <div class="leftover-banner">
+      <div class="leftover-banner-text">🍱 Il te reste des plats à manger</div>
+      ${list.map(lo => {
+        const late = daysUntil(lo.bestBefore) < 0;
+        return `<div class="leftover-row" data-id="${lo.id}">
+          <div class="leftover-info">
+            <img src="${lo.image}" alt="">
+            <span class="leftover-title">${lo.title} · ${lo.portions} portion${lo.portions > 1 ? "s" : ""}${late ? " · ⚠️ à vérifier" : ""}</span>
+          </div>
+          <div class="leftover-actions">
+            <button type="button" class="leftover-eat" data-action="eat">🍽 Mangé</button>
+            <button type="button" class="leftover-trash" data-action="trash" aria-label="Jeter">🗑</button>
+          </div>
+        </div>`;
+      }).join("")}
+    </div>`;
+  el.querySelectorAll(".leftover-row button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.closest(".leftover-row").dataset.id;
+      saveLeftovers(loadLeftovers().filter(lo => lo.id !== id));
+    });
+  });
+}
+
 // ---- "Ma semaine" : recettes prévues pour la semaine, dont on additionnera les ingrédients ----
 function loadWeekRecipes(){
   try { return JSON.parse(localStorage.getItem("foodme_week") || "[]"); }
@@ -5011,6 +5082,21 @@ function attachDoneFlow(recipe, servings){
             return `<button class="chip" data-value="${v}">${translateIngredient(v)}${hint}</button>`;
           }).join("")}
         </div>` : ""}
+        ${(servings || BASE_SERVINGS) > 1 ? `
+        <h3 style="margin-top:22px;">Des restes pour plus tard ?</h3>
+        <div class="settings-row" style="padding:0;border:none;">
+          <div class="settings-desc">Garde une trace des portions non mangées tout de suite, pour y repenser plus tard dans "Cuisiner".</div>
+          <label class="switch">
+            <input type="checkbox" id="leftoverToggle">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+        <div class="servings-stepper" id="leftoverPortionsRow" hidden>
+          <span>Portions restantes</span>
+          <button type="button" id="leftoverMinus" aria-label="Moins de portions">−</button>
+          <span id="leftoverCount">1</span>
+          <button type="button" id="leftoverPlus" aria-label="Plus de portions">+</button>
+        </div>` : ""}
         ${currentUser ? `
         <h3 style="margin-top:22px;">Partager avec la communauté ?</h3>
         <div class="settings-row" style="padding:0;border:none;">
@@ -5095,6 +5181,28 @@ function attachDoneFlow(recipe, servings){
         difficulty = btn.dataset.value;
       });
     });
+    let leftoverPortions = 0;
+    const leftoverToggle = document.getElementById("leftoverToggle");
+    if (leftoverToggle) {
+      const maxLeftover = Math.max(1, (servings || BASE_SERVINGS) - 1);
+      const leftoverRow = document.getElementById("leftoverPortionsRow");
+      const leftoverCountEl = document.getElementById("leftoverCount");
+      let count = 1;
+      leftoverToggle.addEventListener("change", () => {
+        leftoverRow.hidden = !leftoverToggle.checked;
+        leftoverPortions = leftoverToggle.checked ? count : 0;
+      });
+      document.getElementById("leftoverMinus").addEventListener("click", () => {
+        count = Math.max(1, count - 1);
+        leftoverCountEl.textContent = count;
+        leftoverPortions = count;
+      });
+      document.getElementById("leftoverPlus").addEventListener("click", () => {
+        count = Math.min(maxLeftover, count + 1);
+        leftoverCountEl.textContent = count;
+        leftoverPortions = count;
+      });
+    }
     const toRemove = new Set();
     document.querySelectorAll("#doneChips .chip").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -5143,6 +5251,7 @@ function attachDoneFlow(recipe, servings){
 
     document.getElementById("confirmDoneBtn").addEventListener("click", async (e) => {
       addCookedDish(recipe, difficulty, capturedPhoto);
+      if (leftoverPortions > 0) addLeftover(recipe, leftoverPortions, capturedPhoto);
       const consumptionMap = {};
       usedFromSelection.forEach(v => { const c = computeConsumption(v); if (c) consumptionMap[v] = c; });
       const wantsShare = shareToggle && shareToggle.checked;
@@ -6400,6 +6509,7 @@ function switchTab(tab){
   if (shownView) { shownView.classList.remove("view-enter"); void shownView.offsetWidth; shownView.classList.add("view-enter"); }
   document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   if (tab === "cuisiner") {
+    renderLeftoversBanner();
     if (selected.size === 0) {
       document.getElementById("results").innerHTML = `<div class="state-msg">Ton frigo est vide 😕<br>Ajoute d'abord des ingrédients dans l'onglet "Mon frigo".<br><button type="button" class="rate-taste-btn" id="goToFridgeBtn" style="margin-top:10px;">→ Remplir mon frigo</button></div>`;
       const goBtn = document.getElementById("goToFridgeBtn");
