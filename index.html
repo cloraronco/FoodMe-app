@@ -536,6 +536,14 @@
   .qty-row{display:flex;gap:4px;margin:4px 0 0 4px;width:100%;}
   .qty-amount-input{width:64px;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:3px 6px;}
   .qty-unit-select{font-size:12px;border:1px solid var(--line);border-radius:6px;padding:3px 4px;}
+  .verify-banner{background:var(--sage-tint,#EEF3EA);border:1px solid var(--sage,#8FA687);border-radius:12px;padding:10px 12px;margin-bottom:12px;}
+  .verify-banner-text{font-size:13px;font-weight:600;margin-bottom:8px;}
+  .verify-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;font-size:13px;border-top:1px solid rgba(0,0,0,.06);}
+  .verify-row:first-child{border-top:none;}
+  .verify-actions{display:flex;gap:6px;flex-shrink:0;}
+  .verify-actions button{font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:4px 9px;background:#fff;cursor:pointer;}
+  .verify-confirm{color:var(--basil-ink,#2F4B36);border-color:var(--sage,#8FA687)!important;}
+  .verify-remove{color:var(--tomato-dark,#B23A2E);}
   .settings-row{
     display:flex;align-items:center;justify-content:space-between;gap:14px;
     background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;
@@ -1417,10 +1425,60 @@ async function uploadAvatarPhoto(dataUrl){
 // Tant que personne n'est connecté, tout reste 100% local, exactement comme avant.
 async function pullFridgeFromInventoryItems(){
   const { data, error } = await sb.from("inventory_items")
-    .select("ingredient_id, quantity, unit, expiry_date")
+    .select("ingredient_id, quantity, unit, expiry_date, added_at, last_verified_at")
     .eq("owner_id", currentUser.id);
   if (error) throw error;
   return data || [];
+}
+// ---- Modèle de confiance fine (frigo intelligent) : la confiance décroît avec le temps depuis la
+// dernière vérification, plus vite pour les aliments périssables — jamais réinitialisée par une simple
+// synchronisation automatique, seulement par une modification manuelle explicite ou une confirmation. ----
+function loadFridgeMeta(){
+  try { return JSON.parse(localStorage.getItem("foodme_fridge_meta") || "{}"); }
+  catch(e) { return {}; }
+}
+function saveFridgeMeta(m){ localStorage.setItem("foodme_fridge_meta", JSON.stringify(m)); }
+// Ingrédients ajoutés/modifiés depuis la dernière synchro cloud (confiance à réinitialiser au prochain push).
+let dirtyIngredients = new Set();
+// Référentiel ingrédients (périssabilité, durée de conservation par défaut) : mis en cache localement,
+// récupéré une fois par session pour éviter un aller-retour réseau à chaque calcul de confiance.
+let ingredientMetaCache = null;
+async function loadIngredientMetaCache(){
+  if (ingredientMetaCache) return ingredientMetaCache;
+  try { ingredientMetaCache = JSON.parse(localStorage.getItem("foodme_ingredient_meta") || "null"); } catch(e) { ingredientMetaCache = null; }
+  if (!sb) return ingredientMetaCache || {};
+  try {
+    const { data, error } = await sb.from("ingredients").select("id, perishable, default_shelf_life_days");
+    if (!error && data) {
+      ingredientMetaCache = {};
+      data.forEach(row => { ingredientMetaCache[row.id] = { perishable: row.perishable, shelfLifeDays: row.default_shelf_life_days }; });
+      localStorage.setItem("foodme_ingredient_meta", JSON.stringify(ingredientMetaCache));
+    }
+  } catch(e) { console.warn("Référentiel ingrédients indisponible :", e); }
+  return ingredientMetaCache || {};
+}
+// Confiance entre 0.15 (plancher) et 1 (vérifié à l'instant), qui décroît linéairement avec le temps écoulé
+// depuis la dernière vérification (ou l'ajout si jamais vérifié depuis) — fenêtre courte pour un aliment
+// périssable (sa durée de conservation par défaut, ×1.5), longue pour un aliment stable (45 jours par défaut).
+function computeEffectiveConfidence(ingredientId){
+  const meta = loadFridgeMeta()[ingredientId];
+  if (!meta) return 1; // pas encore d'historique de confiance connu localement : pas de fausse alerte
+  const base = meta.lastVerifiedAt || meta.addedAt;
+  if (!base) return 1;
+  const daysSince = (Date.now() - new Date(base).getTime()) / 86400000;
+  const info = (ingredientMetaCache || {})[ingredientId];
+  const perishable = info ? !!info.perishable : false;
+  const windowDays = perishable ? Math.max(2, (info.shelfLifeDays || 5)) * 1.5 : 45;
+  const floor = 0.15;
+  return Math.max(floor, Math.min(1, 1 - daysSince / windowDays));
+}
+// Marque un aliment comme vérifié à l'instant : nouvelle référence de confiance, poussée au prochain sync.
+function markIngredientVerified(ingredientId){
+  dirtyIngredients.add(ingredientId);
+  const meta = loadFridgeMeta();
+  meta[ingredientId] = Object.assign({}, meta[ingredientId], { lastVerifiedAt: new Date().toISOString() });
+  saveFridgeMeta(meta);
+  scheduleCloudSync();
 }
 async function pullFromCloudAndMerge(){
   if (!sb || !currentUser) return;
@@ -1442,14 +1500,18 @@ async function pullFromCloudAndMerge(){
         }));
       }
       selected.clear();
-      const quantities = {}, expiry = {};
+      const quantities = {}, expiry = {}, meta = {};
       items.forEach(it => {
         selected.add(it.ingredient_id);
         if (it.quantity != null && it.unit) quantities[it.ingredient_id] = { amount: Number(it.quantity), unit: it.unit };
         if (it.expiry_date) expiry[it.ingredient_id] = it.expiry_date;
+        meta[it.ingredient_id] = { addedAt: it.added_at || null, lastVerifiedAt: it.last_verified_at || null };
       });
       saveFridgeQuantities(quantities);
       saveExpiryDates(expiry);
+      saveFridgeMeta(meta);
+      dirtyIngredients.clear();
+      loadIngredientMetaCache();
       saveCookedDishes(data.cooked_dishes || []);
       saveShoppingList(data.shopping_list || []);
       saveWeekRecipes(data.week_recipes || []);
@@ -1484,23 +1546,41 @@ function scheduleCloudSync(){
 async function pushFridgeToInventoryItems(){
   const quantities = loadFridgeQuantities();
   const expiry = loadExpiryDates();
-  const rows = Array.from(selected).map(value => ({
-    owner_id: currentUser.id,
-    ingredient_id: value,
-    quantity: quantities[value] ? quantities[value].amount : null,
-    unit: quantities[value] ? quantities[value].unit : null,
-    expiry_date: expiry[value] || null,
-    confidence: 1.0,
-    source: "manual",
-    updated_at: new Date().toISOString()
-  }));
-  // Remplacement complet (comme l'ancien tableau JSON) : plus simple et fiable qu'un diff ligne à ligne
-  // pour un frigo qui reste petit (quelques dizaines d'ingrédients).
-  await sb.from("inventory_items").delete().eq("owner_id", currentUser.id);
-  if (rows.length) {
-    const { error } = await sb.from("inventory_items").insert(rows);
-    if (error) throw error;
+  const fridgeMeta = loadFridgeMeta();
+  const currentValues = Array.from(selected);
+
+  // Aliments retirés du frigo depuis la dernière synchro : à supprimer côté cloud.
+  const known = Object.keys(fridgeMeta);
+  const removed = known.filter(id => !selected.has(id));
+  if (removed.length) {
+    await sb.from("inventory_items").delete().eq("owner_id", currentUser.id).in("ingredient_id", removed);
+    removed.forEach(id => delete fridgeMeta[id]);
   }
+
+  // Un aliment est "nouveau" pour le cloud s'il n'a jamais été vu (pas d'historique local) — dans ce cas
+  // comme dans celui d'une modification explicite (dirtyIngredients), on réinitialise sa confiance à 1
+  // et sa date de vérification à maintenant. Les autres ne sont PAS touchés : c'est ce qui permet à leur
+  // confiance de décroître naturellement dans le temps, sans être effacée par chaque synchro automatique.
+  const now = new Date().toISOString();
+  const toVerify = currentValues.filter(id => dirtyIngredients.has(id) || !fridgeMeta[id]);
+  if (toVerify.length) {
+    const rows = toVerify.map(value => ({
+      owner_id: currentUser.id,
+      ingredient_id: value,
+      quantity: quantities[value] ? quantities[value].amount : null,
+      unit: quantities[value] ? quantities[value].unit : null,
+      expiry_date: expiry[value] || null,
+      confidence: 1.0,
+      source: "manual",
+      last_verified_at: now,
+      updated_at: now
+    }));
+    const { error } = await sb.from("inventory_items").upsert(rows, { onConflict: "owner_id,ingredient_id" });
+    if (error) throw error;
+    toVerify.forEach(id => { fridgeMeta[id] = { addedAt: fridgeMeta[id] ? fridgeMeta[id].addedAt : now, lastVerifiedAt: now }; });
+    dirtyIngredients.clear();
+  }
+  saveFridgeMeta(fridgeMeta);
 }
 async function pushToCloud(){
   if (!sb || !currentUser) return;
@@ -2878,6 +2958,7 @@ function renderCategories(){
       } else {
         selected.add(value);
         btn.classList.add("selected");
+        dirtyIngredients.add(value);
       }
       updateSearchBtn();
       updateCategoryCounts();
@@ -2954,6 +3035,7 @@ function setExpiryDate(value, dateStr){
   const dates = loadExpiryDates();
   if (dateStr) dates[value] = dateStr; else delete dates[value];
   saveExpiryDates(dates);
+  dirtyIngredients.add(value);
   updateFridgeSummary();
   scheduleCloudSync();
 }
@@ -2976,6 +3058,7 @@ function setFridgeQuantity(value, amount, unit){
   if (amount && unit) q[value] = { amount: Number(amount), unit };
   else delete q[value];
   saveFridgeQuantities(q);
+  dirtyIngredients.add(value);
   scheduleCloudSync();
 }
 // Convertit une quantité vers une unité de base par famille (g pour la masse, mL pour le volume,
@@ -3077,8 +3160,36 @@ function updateFridgeSummary(){
   const expiry = antiWaste ? loadExpiryDates() : {};
   const quantities = quantitiesOn ? loadFridgeQuantities() : {};
   const clickable = antiWaste || quantitiesOn;
+  // Vérification ciblée (frigo intelligent) : seulement les aliments avec une quantité connue dont la
+  // confiance est tombée en dessous du seuil — jamais l'ensemble du frigo, pour ne pas transformer
+  // l'utilisateur en gestionnaire de stock permanent.
+  const verifyItems = (quantitiesOn && !q && sb && currentUser) ? Array.from(selected)
+    .filter(id => quantities[id])
+    .map(id => ({ id, confidence: computeEffectiveConfidence(id) }))
+    .filter(x => x.confidence < 0.5)
+    .sort((a, b) => a.confidence - b.confidence)
+    .slice(0, 4)
+    : [];
+  const allItems = CATEGORIES.flatMap(c => c.items);
+  const labelFor = (value) => { const found = allItems.find(([, v]) => v === value); return found ? found[0] : value; };
+  const verifyBanner = verifyItems.length > 0 ? `
+    <div class="verify-banner">
+      <div class="verify-banner-text">🔍 Ton frigo a peut-être changé depuis la dernière vérification — vérifions ${verifyItems.length} aliment${verifyItems.length > 1 ? "s" : ""} important${verifyItems.length > 1 ? "s" : ""} ?</div>
+      <div class="verify-banner-list">
+        ${verifyItems.map(v => `
+          <div class="verify-row" data-value="${v.id}">
+            <span>${labelFor(v.id)}${quantities[v.id] ? ` <span class="qty-hint">(${quantities[v.id].amount}${QUANTITY_UNITS[quantities[v.id].unit]})</span>` : ""}</span>
+            <span class="verify-actions">
+              <button type="button" class="verify-confirm" data-value="${v.id}">✓ Toujours bon</button>
+              <button type="button" class="verify-edit" data-value="${v.id}">Modifier</button>
+              <button type="button" class="verify-remove" data-value="${v.id}">Terminé</button>
+            </span>
+          </div>
+        `).join("")}
+      </div>
+    </div>` : "";
   let anyMatch = !q;
-  summaryEl.innerHTML = CATEGORIES.map(cat => {
+  summaryEl.innerHTML = verifyBanner + CATEGORIES.map(cat => {
     const items = cat.items.filter(([label, value]) => selected.has(value) && (!q || label.toLowerCase().includes(q)));
     if (items.length > 0) anyMatch = true;
     if (items.length === 0) return "";
@@ -3168,6 +3279,26 @@ function updateFridgeSummary(){
       updateSearchBtn();
       updateFridgeSummary();
       scheduleCloudSync();
+    });
+  });
+  summaryEl.querySelectorAll(".verify-confirm").forEach(btn => {
+    btn.addEventListener("click", () => { markIngredientVerified(btn.dataset.value); updateFridgeSummary(); });
+  });
+  summaryEl.querySelectorAll(".verify-remove").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const value = btn.dataset.value;
+      selected.delete(value);
+      renderCategories();
+      updateSearchBtn();
+      updateFridgeSummary();
+      scheduleCloudSync();
+    });
+  });
+  summaryEl.querySelectorAll(".verify-edit").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const label = summaryEl.querySelector(`.pill-label[data-value="${CSS.escape(btn.dataset.value)}"]`);
+      if (label) label.click(); // réutilise le même panneau de saisie que le clic sur l'aliment
+      label && label.scrollIntoView({ behavior: "smooth", block: "center" });
     });
   });
 }
