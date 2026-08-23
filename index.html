@@ -528,7 +528,8 @@
   .pill.expiring button{color:var(--tomato-dark);}
   .expiry-tag{font-size:11px;font-weight:700;margin-left:2px;}
   .expiry-hint{font-size:11px;opacity:.55;margin-left:3px;}
-  .pill-label.clickable{cursor:pointer;border-bottom:1px dashed currentColor;padding-bottom:1px;}
+  .pill-label.clickable{cursor:pointer;}
+  .pill-label.clickable.has-value{border-bottom:1px dashed currentColor;padding-bottom:1px;}
   .expiry-input{margin-left:6px;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 4px;}
   .qty-hint{font-size:11px;opacity:.55;margin-left:3px;}
   .qty-row{display:flex;gap:4px;margin:4px 0 0 4px;width:100%;}
@@ -3089,9 +3090,10 @@ function updateFridgeSummary(){
             const days = dateStr ? daysUntil(dateStr) : null;
             const warn = days !== null && days <= 3;
             const qty = quantities[value];
+            const hasValue = !!(dateStr || qty);
             return `
             <span class="pill${warn ? " expiring" : ""}" data-value="${value}">
-              <span class="pill-label${clickable ? " clickable" : ""}" data-value="${value}">${label}${warn ? `<span class="expiry-tag">${days < 0 ? "⚠️ périmé" : days === 0 ? "⚠️ auj." : `⚠️ ${days}j`}</span>` : (antiWaste && dateStr) ? `<span class="expiry-hint">📅 ${formatShortExpiryDate(dateStr)}</span>` : antiWaste ? `<span class="expiry-hint">📅</span>` : ""}${qty ? `<span class="qty-hint">📏 ${qty.amount}${QUANTITY_UNITS[qty.unit]}</span>` : (quantitiesOn ? `<span class="qty-hint">📏</span>` : "")}</span>
+              <span class="pill-label${clickable ? " clickable" : ""}${hasValue ? " has-value" : ""}" data-value="${value}">${label}${warn ? `<span class="expiry-tag">${days < 0 ? "⚠️ périmé" : days === 0 ? "⚠️ auj." : `⚠️ ${days}j`}</span>` : (antiWaste && dateStr) ? `<span class="expiry-hint">📅 ${formatShortExpiryDate(dateStr)}</span>` : antiWaste ? `<span class="expiry-hint">📅</span>` : ""}${qty ? `<span class="qty-hint">(${qty.amount}${QUANTITY_UNITS[qty.unit]})</span>` : (quantitiesOn ? `<span class="qty-hint">📏</span>` : "")}</span>
               <button aria-label="Retirer">×</button>
             </span>
             ${antiWaste ? `<input type="date" class="expiry-input" data-value="${value}" value="${dateStr || ""}" hidden>` : ""}
@@ -3100,7 +3102,7 @@ function updateFridgeSummary(){
                 <input type="number" min="0" step="0.1" class="qty-amount-input" data-value="${value}" placeholder="Qté" value="${qty ? qty.amount : ""}">
                 <select class="qty-unit-select" data-value="${value}">
                   <option value="">Unité</option>
-                  ${Object.entries(QUANTITY_UNITS).map(([k, lbl]) => `<option value="${k}"${qty && qty.unit === k ? " selected" : ""}>${lbl}</option>`).join("")}
+                  ${Object.entries(QUANTITY_UNITS).map(([k, lbl]) => `<option value="${k}"${(qty ? qty.unit === k : k === "g") ? " selected" : ""}>${lbl}</option>`).join("")}
                 </select>
               </div>` : ""}
           `;
@@ -3117,6 +3119,12 @@ function updateFridgeSummary(){
       label.addEventListener("click", () => {
         const dateInput = summaryEl.querySelector(`.expiry-input[data-value="${CSS.escape(label.dataset.value)}"]`);
         const qtyRow = summaryEl.querySelector(`.qty-row[data-value="${CSS.escape(label.dataset.value)}"]`);
+        const alreadyOpen = (dateInput && !dateInput.hidden) || (qtyRow && !qtyRow.hidden);
+        if (alreadyOpen) {
+          if (dateInput) dateInput.hidden = true;
+          if (qtyRow) qtyRow.hidden = true;
+          return;
+        }
         if (dateInput) {
           dateInput.hidden = false;
           try { dateInput.showPicker ? dateInput.showPicker() : dateInput.focus(); }
