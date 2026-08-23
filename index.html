@@ -3120,6 +3120,9 @@ function updateFridgeSummary(){
         const dateInput = summaryEl.querySelector(`.expiry-input[data-value="${CSS.escape(label.dataset.value)}"]`);
         const qtyRow = summaryEl.querySelector(`.qty-row[data-value="${CSS.escape(label.dataset.value)}"]`);
         const alreadyOpen = (dateInput && !dateInput.hidden) || (qtyRow && !qtyRow.hidden);
+        // On referme tout ce qui était ouvert ailleurs : un seul aliment modifiable à la fois.
+        summaryEl.querySelectorAll(".expiry-input").forEach(el => { if (el !== dateInput) el.hidden = true; });
+        summaryEl.querySelectorAll(".qty-row").forEach(el => { if (el !== qtyRow) el.hidden = true; });
         if (alreadyOpen) {
           if (dateInput) dateInput.hidden = true;
           if (qtyRow) qtyRow.hidden = true;
