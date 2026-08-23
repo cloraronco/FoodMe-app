@@ -380,6 +380,8 @@
   .feed-tagged-link{color:var(--ink-dim);font-weight:600;cursor:pointer;}
   .feed-tagged-link:hover{color:var(--tomato-dark);text-decoration:underline;}
   .badge.custom{background:var(--tomato-tint);color:var(--tomato-dark);}
+  button.badge.custom.card-author-link{font-family:var(--font-body);border:none;cursor:pointer;text-decoration:underline;text-underline-offset:2px;}
+  button.badge.custom.card-author-link:hover{background:var(--tomato-tint);filter:brightness(0.95);}
   .recipe-author-link{background:none;border:none;padding:0;margin-left:6px;font-family:var(--font-body);font-size:12px;font-weight:500;color:var(--ink-dim);cursor:pointer;text-decoration:underline;text-underline-offset:2px;vertical-align:middle;}
   .recipe-author-link:hover{color:var(--tomato);}
   .section-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;}
@@ -529,7 +531,6 @@
   .expiry-tag{font-size:11px;font-weight:700;margin-left:2px;}
   .expiry-hint{font-size:11px;opacity:.55;margin-left:3px;}
   .pill-label.clickable{cursor:pointer;}
-  .pill-label.clickable.has-value{border-bottom:1px dashed currentColor;padding-bottom:1px;}
   .expiry-input{margin-left:6px;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 4px;}
   .qty-hint{font-size:11px;opacity:.55;margin-left:3px;}
   .qty-row{display:flex;gap:4px;margin:4px 0 0 4px;width:100%;}
@@ -3090,10 +3091,9 @@ function updateFridgeSummary(){
             const days = dateStr ? daysUntil(dateStr) : null;
             const warn = days !== null && days <= 3;
             const qty = quantities[value];
-            const hasValue = !!(dateStr || qty);
             return `
             <span class="pill${warn ? " expiring" : ""}" data-value="${value}">
-              <span class="pill-label${clickable ? " clickable" : ""}${hasValue ? " has-value" : ""}" data-value="${value}">${label}${warn ? `<span class="expiry-tag">${days < 0 ? "⚠️ périmé" : days === 0 ? "⚠️ auj." : `⚠️ ${days}j`}</span>` : (antiWaste && dateStr) ? `<span class="expiry-hint">📅 ${formatShortExpiryDate(dateStr)}</span>` : antiWaste ? `<span class="expiry-hint">📅</span>` : ""}${qty ? `<span class="qty-hint">(${qty.amount}${QUANTITY_UNITS[qty.unit]})</span>` : (quantitiesOn ? `<span class="qty-hint">📏</span>` : "")}</span>
+              <span class="pill-label${clickable ? " clickable" : ""}" data-value="${value}">${label}${warn ? `<span class="expiry-tag">${days < 0 ? "⚠️ périmé" : days === 0 ? "⚠️ auj." : `⚠️ ${days}j`}</span>` : (antiWaste && dateStr) ? `<span class="expiry-hint">📅 ${formatShortExpiryDate(dateStr)}</span>` : antiWaste ? `<span class="expiry-hint">📅</span>` : ""}${qty ? `<span class="qty-hint">(${qty.amount}${QUANTITY_UNITS[qty.unit]})</span>` : (quantitiesOn ? `<span class="qty-hint">📏</span>` : "")}</span>
               <button aria-label="Retirer">×</button>
             </span>
             ${antiWaste ? `<input type="date" class="expiry-input" data-value="${value}" value="${dateStr || ""}" hidden>` : ""}
@@ -3767,7 +3767,7 @@ function renderRecipeResults(){
         <div class="info">
           <h3>${escAttr(r.titleFr)}</h3>
           <div class="badges">
-            ${r.isCustom ? `<span class="badge custom">📝 ${r.authorName ? escAttr(r.authorName) : "Recette perso"}</span>` : ""}
+            ${r.isCustom ? (r.authorName ? `<button type="button" class="badge custom card-author-link" data-author-id="${r.authorId}">📝 ${escAttr(r.authorName)}</button>` : `<span class="badge custom">📝 Recette perso</span>`) : ""}
             ${(r.prepMinutes || !r.isCustom) ? `<span class="badge" title="Temps de prépa (actif)">🔪 ~${r.prepMinutes} min</span>` : ""}
             ${(r.totalMinutes || !r.isCustom) ? `<span class="badge" title="Temps total, du début à l'assiette">⏱ ~${r.totalMinutes} min</span>` : ""}
             ${r.soonestExpiryDays !== null ? `<span class="badge">🔥 J-${Math.max(0, r.soonestExpiryDays)}</span>` : ""}
@@ -3802,6 +3802,12 @@ function renderRecipeResults(){
   resultsEl.querySelectorAll(".recipe-card").forEach(card => {
     card.addEventListener("click", () => openRecipeDetail(card.dataset.id, "cuisiner"));
   });
+  resultsEl.querySelectorAll(".card-author-link").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showSecondaryView("profil", btn.dataset.authorId);
+    });
+  });
   resultsEl.querySelectorAll('[data-action="toggle-week"]').forEach(btn => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -3818,6 +3824,8 @@ function renderRecipeResults(){
 async function fetchCommunityCustomResults(ingredients, titleQuery){
   if (!sb) return [];
   try {
+    // Visibilité gérée par la RLS (compte public, abonné accepté, ou ses propres recettes) —
+    // une recette publiée reste donc toujours visible ici, sans dépendre d'un post associé.
     let query = sb.from("custom_recipes").select("*, profiles(username)");
     if (titleQuery) query = query.ilike("title", `%${titleQuery}%`);
     const { data, error } = await query;
@@ -5631,7 +5639,9 @@ async function showCustomRecipeDetail(id, returnTo){
     // Pas en local (ex : recette d'un ami cliquée depuis le fil) : on va la chercher dans la table partagée.
     resultsEl.innerHTML = `<div class="state-msg">Chargement…</div>`;
     try {
-      const { data } = await sb.from("custom_recipes").select("*, profiles(username)").eq("id", id).maybeSingle();
+      const fetchPromise = sb.from("custom_recipes").select("*, profiles(username)").eq("id", id).maybeSingle();
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000));
+      const { data } = await Promise.race([fetchPromise, timeoutPromise]);
       if (data) {
         recipe = {
           id: data.id,
@@ -5649,7 +5659,12 @@ async function showCustomRecipeDetail(id, returnTo){
         authorId = data.user_id;
         authorName = (data.profiles && data.profiles.username) || null;
       }
-    } catch (e) { console.error("Chargement recette perso partagée :", e); }
+    } catch (e) {
+      console.error("Chargement recette perso partagée :", e);
+      if (requestId !== cuisinerRequestId) return;
+      resultsEl.innerHTML = `<div class="state-msg">Impossible de charger cette recette.<br>Vérifie ta connexion internet et réessaie.</div>`;
+      return;
+    }
   }
   if (requestId !== cuisinerRequestId) return; // une autre recette a été ouverte entre-temps
   if (!recipe) {
