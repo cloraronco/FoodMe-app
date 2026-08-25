@@ -3344,16 +3344,18 @@ function ingredientNamesMatch(nameA, nameB){
   return new RegExp(`\\b${b}\\b`).test(a) || new RegExp(`\\b${a}\\b`).test(b);
 }
 // Comme ingredientNamesMatch, mais compare aussi au libellé français du frigo (ex: "Tomate") et pas
-// seulement à son identifiant technique anglais (ex: "Tomatoes") — utile pour les recettes perso, dont
-// les ingrédients sont généralement nommés en français. Sans risque pour les recettes du catalogue
-// (en anglais) : on ne fait qu'ajouter une deuxième façon de reconnaître la même correspondance.
+// seulement à son identifiant technique anglais (ex: "Tomatoes") — seule façon fiable de reconnaître un
+// ingrédient de recette perso (nommé en français par convention) face à un identifiant de frigo anglais.
+// Sans risque pour les recettes du catalogue (en anglais) : on ne fait qu'ajouter une deuxième façon de
+// reconnaître la même correspondance. Unique source de vérité pour ce rapprochement : utilisée à la fois
+// pour la détection "il te manque" (FeasibilityEngine) et pour la reconnaissance en fin de recette.
+function ingredientMatchesFridgeValue(name, fridgeValue){
+  if (ingredientNamesMatch(name, fridgeValue)) return true;
+  const catItem = CATEGORIES.flatMap(c => c.items).find(([, val]) => val === fridgeValue);
+  return !!(catItem && ingredientNamesMatch(name, catItem[0]));
+}
 function ingredientInFridge(name, fridgeValues){
-  const allItems = CATEGORIES.flatMap(c => c.items);
-  return fridgeValues.some(v => {
-    if (ingredientNamesMatch(name, v)) return true;
-    const catItem = allItems.find(([, val]) => val === v);
-    return catItem && ingredientNamesMatch(name, catItem[0]);
-  });
+  return fridgeValues.some(v => ingredientMatchesFridgeValue(name, v));
 }
 
 // ---- Ingrédients "de base" qu'on considère toujours dispo (pas besoin de les sélectionner) ----
@@ -5027,7 +5029,7 @@ function attachDoneFlow(recipe, servings){
       if (error) console.warn("Comptage anonyme de cuisson impossible :", error);
     });
     const usedFromSelection = Array.from(selected).filter(v =>
-      recipe.ingredients.some(({ name }) => ingredientNamesMatch(name, v))
+      recipe.ingredients.some(({ name }) => ingredientMatchesFridgeValue(name, v))
     );
     // Pour les ingrédients gardés (pas cochés "entièrement utilisé"), calcule ce que la recette a vraiment
     // consommé quand c'est possible (recette perso avec quantité + quantités Premium actives + quantité
@@ -5036,7 +5038,7 @@ function attachDoneFlow(recipe, servings){
     const fridgeQuantitiesAtCook = loadFridgeQuantities();
     function computeConsumption(v){
       if (!quantitiesOn) return null;
-      const ing = recipe.ingredients.find(({ name }) => name && ingredientNamesMatch(name, v));
+      const ing = recipe.ingredients.find(({ name }) => name && ingredientMatchesFridgeValue(name, v));
       if (!ing || ing.amount == null || !ing.unit) return null;
       const stock = fridgeQuantitiesAtCook[v];
       if (!stock) return null;
