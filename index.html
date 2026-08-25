@@ -1557,10 +1557,23 @@ async function pullFromCloudAndMerge(){
 }
 
 let cloudSyncTimer = null;
+// Comportement normal (frappes, changements fréquents) : différé de 1,2s pour ne pas spammer le réseau.
 function scheduleCloudSync(){
   if (!sb || !currentUser) return;
   clearTimeout(cloudSyncTimer);
   cloudSyncTimer = setTimeout(pushToCloud, 1200);
+}
+// Opérations critiques qui changent durablement les données (ex. création/suppression d'une recette perso) :
+// annule le débounce en attente et pousse la sauvegarde cloud complète (user_data) immédiatement, au lieu
+// d'attendre 1,2s. Sans ça, fermer/recharger l'app dans cette fenêtre fait perdre la donnée : au prochain
+// lancement, pullFromCloudAndMerge écrase le stockage local avec un instantané cloud resté obsolète.
+// pushToCloud lit toujours l'état local le plus frais au moment de l'appel et gère déjà ses propres erreurs
+// (voir son catch) sans jamais toucher au stockage local — on réutilise donc cette garantie telle quelle.
+function forceCloudSync(){
+  if (!sb || !currentUser) return Promise.resolve();
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = null;
+  return pushToCloud();
 }
 async function pushFridgeToInventoryItems(){
   const quantities = loadFridgeQuantities();
@@ -5067,19 +5080,39 @@ function attachDoneFlow(recipe, servings){
     const usedFromSelection = Array.from(selected).filter(v =>
       recipe.ingredients.some(ing => ingredientMatchesFridgeValueForIngredient(ing, v))
     );
-    // Pour les ingrédients gardés (pas cochés "entièrement utilisé"), calcule ce que la recette a vraiment
-    // consommé quand c'est possible (recette perso avec quantité + quantités Premium actives + quantité
-    // connue au frigo) — pour décrémenter le stock au lieu de le laisser inchangé comme avant.
     const quantitiesOn = isQuantitiesActive();
     const fridgeQuantitiesAtCook = loadFridgeQuantities();
+    // Ratio recette -> nombre de personnes réellement cuisiné (indépendant du nombre de portions mangées,
+    // qui n'intervient qu'à l'étape suivante). Principe central de cette refonte : la quantité qui sort du
+    // frigo est déterminée ICI, au moment de la cuisson — jamais recalculée en fonction de ce qui sera mangé.
+    const ratio = (servings || BASE_SERVINGS) / (recipe.servings || BASE_SERVINGS);
+    // Sépare les ingrédients du frigo utilisés par la recette en deux groupes : ceux dont la quantité est
+    // calculable (recette perso quantifiée + Premium actif) et les autres (mesure libre ou Premium désactivé,
+    // ex. huile d'olive) — seuls ces derniers ont encore besoin d'une case "entièrement utilisé" manuelle.
+    const quantifiable = [];
+    const nonQuantifiable = [];
+    usedFromSelection.forEach(v => {
+      const ing = recipe.ingredients.find(candidate => candidate.name && ingredientMatchesFridgeValueForIngredient(candidate, v));
+      if (quantitiesOn && ing && ing.amount != null && ing.unit) {
+        quantifiable.push({ v, name: ing.name, unit: ing.unit, defaultAmount: round2(ing.amount * ratio) });
+      } else {
+        nonQuantifiable.push(v);
+      }
+    });
+    // Quantités réellement utilisées pour CE plat : pré-remplies avec la quantité prévue par la recette,
+    // mises à jour seulement si l'utilisateur ouvre "Modifier les quantités utilisées" (exception, cas D).
+    // Valeur déjà absolue (pas un ratio à réappliquer) : c'est ce qui sort du frigo, point final.
+    const usedQuantities = {};
+    quantifiable.forEach(q => { usedQuantities[q.v] = q.defaultAmount; });
+
     function computeConsumption(v){
       if (!quantitiesOn) return null;
       const ing = recipe.ingredients.find(candidate => candidate.name && ingredientMatchesFridgeValueForIngredient(candidate, v));
       if (!ing || ing.amount == null || !ing.unit) return null;
       const stock = fridgeQuantitiesAtCook[v];
       if (!stock) return null;
-      const ratio = (servings || BASE_SERVINGS) / (recipe.servings || BASE_SERVINGS);
-      const needed = toBaseQuantity(ing.amount * ratio, ing.unit);
+      const usedAmount = usedQuantities[v] != null ? usedQuantities[v] : ing.amount * ratio;
+      const needed = toBaseQuantity(usedAmount, ing.unit);
       const available = toBaseQuantity(stock.amount, stock.unit);
       if (!needed || !available || needed.family !== available.family) return null;
       const consumedBase = Math.min(needed.value, available.value);
@@ -5089,159 +5122,260 @@ function attachDoneFlow(recipe, servings){
         remaining: remainingBase > 0.01 ? fromBaseQuantity(remainingBase, available.family) : null
       };
     }
+
     let difficulty = null;
     let capturedPhoto = null;
     let sharePhoto = { mode: "recipe", dataUrl: null }; // mode: "recipe" | "custom" | "none"
+    let eatenPortions = servings || BASE_SERVINGS; // estimation par défaut : "j'ai tout mangé" (cas le plus fréquent)
+    let keepLeftover = false;
+    const toRemove = new Set();
 
+    // ---- Écran "détails" : difficulté / photo / portions mangées (estimation) / reste / partage ----
+    function renderDetailsScreen(){
+      const cookedServings = servings || BASE_SERVINGS;
+      resultsEl.innerHTML = `
+        <div class="recipe-detail">
+          <h3>Comment ça s'est passé ?</h3>
+          <p class="hint">Note la difficulté de la recette (facultatif).</p>
+          <div class="difficulty-picker" id="difficultyPicker">
+            <button type="button" data-value="facile">😌 Facile</button>
+            <button type="button" data-value="moyen">🙂 Moyen</button>
+            <button type="button" data-value="difficile">😅 Difficile</button>
+          </div>
+          <p class="hint" style="margin-top:18px;">Une photo de ton plat ? (facultatif)</p>
+          <input type="file" id="donePhotoInput" accept="image/*" capture="environment" hidden>
+          <div id="photoPreviewWrap" class="photo-preview-wrap" hidden>
+            <img id="photoPreview" alt="">
+            <button type="button" id="recropPhotoBtn" aria-label="Recadrer la photo" style="right:38px;">✂️</button>
+            <button type="button" id="removePhotoBtn" aria-label="Retirer la photo">✕</button>
+          </div>
+          <button type="button" id="choosePhotoBtn" class="photo-btn">📷 Ajouter une photo</button>
+          <h3 style="margin-top:22px;">Combien de portions as-tu mangées, à peu près ?</h3>
+          <p class="hint">Une estimation suffit — pas besoin d'être précis.</p>
+          <div class="servings-stepper" id="eatenPortionsStepper">
+            <button type="button" id="eatenMinus" aria-label="Moins de portions">−</button>
+            <span id="eatenCount">${eatenPortions}</span>
+            <button type="button" id="eatenPlus" aria-label="Plus de portions">+</button>
+            <span>sur ${cookedServings} portion${cookedServings > 1 ? "s" : ""} préparée${cookedServings > 1 ? "s" : ""}</span>
+          </div>
+          <div class="settings-row" id="keepLeftoverRow" style="padding:0;border:none;margin-top:10px;" hidden>
+            <div class="settings-desc" id="keepLeftoverDesc"></div>
+            <label class="switch">
+              <input type="checkbox" id="keepLeftoverToggle">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          ${currentUser ? `
+          <h3 style="margin-top:22px;">Partager avec la communauté ?</h3>
+          <div class="settings-row" style="padding:0;border:none;">
+            <div class="settings-desc">Visible par tous, avec ton pseudo. Reste décoché pour garder cette recette privée.</div>
+            <label class="switch">
+              <input type="checkbox" id="shareToggle">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+          <input type="text" id="shareTitle" class="search-input" placeholder="Titre de ta publication (facultatif)" maxlength="80" style="margin-top:10px;" hidden>
+          <input type="text" id="shareTaggedUser" class="search-input" placeholder="👤 Fait avec... (pseudo, facultatif)" maxlength="24" style="margin-top:10px;" hidden>
+          <textarea id="shareComment" class="search-input" placeholder="Un petit mot sur ta recette (facultatif — @pseudo pour mentionner quelqu'un)" style="margin-top:10px;resize:vertical;min-height:60px;" hidden></textarea>
+          <div id="sharePhotoBlock" style="margin-top:12px;" hidden>
+            <p class="hint" style="margin:0 0 8px;">Photo de la publication</p>
+            <div id="sharePhotoPreviewWrap" class="photo-preview-wrap" hidden><img id="sharePhotoPreview" alt=""></div>
+            <div class="photo-choice-grid">
+              <button type="button" class="photo-choice-btn" id="shareGalleryBtn">🖼 Choisir une photo</button>
+              <button type="button" class="photo-choice-btn" id="shareCameraBtn">📸 Prendre une photo</button>
+              <button type="button" class="photo-choice-btn" id="shareRecipePhotoBtn">🍽 Photo de la recette</button>
+              <button type="button" class="photo-choice-btn" id="shareNoPhotoBtn">🚫 Sans photo</button>
+            </div>
+            <input type="file" id="shareGalleryInput" accept="image/*" hidden>
+            <input type="file" id="shareCameraInput" accept="image/*" capture="environment" hidden>
+          </div>
+          ` : ""}
+          <button class="confirm-btn" id="confirmDoneBtn">Valider</button>
+        </div>
+      `;
+      const shareToggle = document.getElementById("shareToggle");
+      const sharePhotoPreviewWrap = document.getElementById("sharePhotoPreviewWrap");
+      const sharePhotoPreview = document.getElementById("sharePhotoPreview");
+      const shareChoiceBtns = { recipe: document.getElementById("shareRecipePhotoBtn"), none: document.getElementById("shareNoPhotoBtn"), custom: null };
+      const shareGalleryBtnEl = document.getElementById("shareGalleryBtn");
+      const shareCameraBtnEl = document.getElementById("shareCameraBtn");
+      function updateSharePhotoUI(){
+        [shareGalleryBtnEl, shareCameraBtnEl, shareChoiceBtns.recipe, shareChoiceBtns.none].forEach(b => b.classList.remove("selected"));
+        if (sharePhoto.mode === "recipe") {
+          shareChoiceBtns.recipe.classList.add("selected");
+          sharePhotoPreview.src = recipe.image;
+          sharePhotoPreviewWrap.hidden = false;
+        } else if (sharePhoto.mode === "none") {
+          shareChoiceBtns.none.classList.add("selected");
+          sharePhotoPreviewWrap.hidden = true;
+        } else if (sharePhoto.mode === "custom") {
+          (sharePhoto.source === "camera" ? shareCameraBtnEl : shareGalleryBtnEl).classList.add("selected");
+          sharePhotoPreview.src = sharePhoto.dataUrl;
+          sharePhotoPreviewWrap.hidden = false;
+        }
+      }
+      if (shareToggle) {
+        shareToggle.addEventListener("change", () => {
+          document.getElementById("shareTitle").hidden = !shareToggle.checked;
+          document.getElementById("shareTaggedUser").hidden = !shareToggle.checked;
+          document.getElementById("shareComment").hidden = !shareToggle.checked;
+          document.getElementById("sharePhotoBlock").hidden = !shareToggle.checked;
+          if (shareToggle.checked) {
+            if (capturedPhoto) { sharePhoto = { mode: "custom", dataUrl: capturedPhoto }; }
+            updateSharePhotoUI();
+          }
+        });
+      }
+      if (currentUser) {
+        const shareGalleryInput = document.getElementById("shareGalleryInput");
+        const shareCameraInput = document.getElementById("shareCameraInput");
+        document.getElementById("shareGalleryBtn").addEventListener("click", () => shareGalleryInput.click());
+        document.getElementById("shareCameraBtn").addEventListener("click", () => shareCameraInput.click());
+        async function handleSharePhotoFile(input, source){
+          const file = input.files[0];
+          if (!file) return;
+          const dataUrl = await resizePhoto(file, 800);
+          if (dataUrl) { sharePhoto = { mode: "custom", dataUrl, source }; updateSharePhotoUI(); }
+        }
+        shareGalleryInput.addEventListener("change", () => handleSharePhotoFile(shareGalleryInput, "gallery"));
+        shareCameraInput.addEventListener("change", () => handleSharePhotoFile(shareCameraInput, "camera"));
+        shareChoiceBtns.recipe.addEventListener("click", () => { sharePhoto = { mode: "recipe", dataUrl: null }; updateSharePhotoUI(); });
+        shareChoiceBtns.none.addEventListener("click", () => { sharePhoto = { mode: "none", dataUrl: null }; updateSharePhotoUI(); });
+      }
+      document.querySelectorAll("#difficultyPicker button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll("#difficultyPicker button").forEach(b => b.classList.remove("selected"));
+          btn.classList.add("selected");
+          difficulty = btn.dataset.value;
+        });
+      });
+
+      // Portions mangées (estimation) → le reste éventuel (portions préparées - portions mangées) est déduit
+      // automatiquement, jamais saisi séparément. Tant que tout est mangé, aucune question de reste ne s'affiche.
+      const eatenCountEl = document.getElementById("eatenCount");
+      const keepLeftoverRow = document.getElementById("keepLeftoverRow");
+      const keepLeftoverDesc = document.getElementById("keepLeftoverDesc");
+      const keepLeftoverToggle = document.getElementById("keepLeftoverToggle");
+      function updateEatenUI(){
+        eatenCountEl.textContent = eatenPortions;
+        const remaining = cookedServings - eatenPortions;
+        if (remaining > 0) {
+          keepLeftoverRow.hidden = false;
+          keepLeftoverDesc.textContent = `Garder ${remaining} portion${remaining > 1 ? "s" : ""} de reste pour plus tard ?`;
+        } else {
+          keepLeftoverRow.hidden = true;
+          keepLeftoverToggle.checked = false;
+          keepLeftover = false;
+        }
+      }
+      document.getElementById("eatenMinus").addEventListener("click", () => {
+        eatenPortions = Math.max(0, eatenPortions - 1);
+        updateEatenUI();
+      });
+      document.getElementById("eatenPlus").addEventListener("click", () => {
+        eatenPortions = Math.min(cookedServings, eatenPortions + 1);
+        updateEatenUI();
+      });
+      keepLeftoverToggle.addEventListener("change", () => { keepLeftover = keepLeftoverToggle.checked; });
+      updateEatenUI();
+
+      const choosePhotoBtn = document.getElementById("choosePhotoBtn");
+      const photoInput = document.getElementById("donePhotoInput");
+      const photoPreviewWrap = document.getElementById("photoPreviewWrap");
+      const photoPreview = document.getElementById("photoPreview");
+      let rawPhoto = null; // photo redimensionnée avant recadrage, conservée pour pouvoir recadrer à nouveau sans perte
+      choosePhotoBtn.addEventListener("click", () => photoInput.click());
+      photoInput.addEventListener("change", async () => {
+        const file = photoInput.files[0];
+        if (!file) return;
+        choosePhotoBtn.textContent = "⏳ Traitement…";
+        const dataUrl = await resizePhoto(file, 1000);
+        choosePhotoBtn.textContent = "📷 Ajouter une photo";
+        if (!dataUrl) return;
+        rawPhoto = dataUrl;
+        const cropped = await openPhotoCropper(dataUrl);
+        if (cropped) {
+          capturedPhoto = cropped;
+          photoPreview.src = cropped;
+          photoPreviewWrap.hidden = false;
+          choosePhotoBtn.hidden = true;
+        }
+        photoInput.value = "";
+      });
+      document.getElementById("recropPhotoBtn").addEventListener("click", async () => {
+        if (!rawPhoto) return;
+        const cropped = await openPhotoCropper(rawPhoto);
+        if (cropped) { capturedPhoto = cropped; photoPreview.src = cropped; }
+      });
+      document.getElementById("removePhotoBtn").addEventListener("click", () => {
+        capturedPhoto = null;
+        rawPhoto = null;
+        photoInput.value = "";
+        photoPreviewWrap.hidden = true;
+        choosePhotoBtn.hidden = false;
+        choosePhotoBtn.textContent = "📷 Ajouter une photo";
+      });
+
+      document.getElementById("confirmDoneBtn").addEventListener("click", async (e) => {
+        addCookedDish(recipe, difficulty, capturedPhoto);
+        const leftoverAmount = cookedServings - eatenPortions;
+        if (leftoverAmount > 0 && keepLeftover) addLeftover(recipe, leftoverAmount, capturedPhoto);
+        const consumptionMap = {};
+        usedFromSelection.forEach(v => { const c = computeConsumption(v); if (c) consumptionMap[v] = c; });
+        const wantsShare = shareToggle && shareToggle.checked;
+        if (!wantsShare) { finishRecipe(Array.from(toRemove), consumptionMap); return; }
+        e.target.disabled = true;
+        e.target.textContent = "Publication…";
+        const postTitle = document.getElementById("shareTitle").value.trim();
+        const comment = document.getElementById("shareComment").value.trim();
+        const taggedUsername = document.getElementById("shareTaggedUser").value.trim().replace(/^@/, "");
+        const ok = await publishToCommunity(recipe, difficulty, sharePhoto, postTitle, comment, taggedUsername || null);
+        finishRecipe(Array.from(toRemove), consumptionMap, ok);
+      });
+    }
+
+    // ---- Écran "quantités utilisées" : affiché seulement s'il y a quelque chose à confirmer (ingrédients de
+    // la recette présents au frigo). Par défaut on suppose que la recette a été suivie telle quelle (95% des
+    // cas) : un seul bouton "Oui, cuisiner" suffit. "Modifier les quantités utilisées" reste une exception,
+    // jamais une étape obligatoire. Sans ingrédient à confirmer (ex. TheMealDB, dont les mesures ne sont
+    // jamais quantifiables), cet écran est sauté entièrement — comportement inchangé pour ces recettes.
+    if (quantifiable.length === 0 && nonQuantifiable.length === 0) {
+      renderDetailsScreen();
+      return;
+    }
     resultsEl.innerHTML = `
       <div class="recipe-detail">
-        <h3>Comment ça s'est passé ?</h3>
-        <p class="hint">Note la difficulté de la recette (facultatif).</p>
-        <div class="difficulty-picker" id="difficultyPicker">
-          <button type="button" data-value="facile">😌 Facile</button>
-          <button type="button" data-value="moyen">🙂 Moyen</button>
-          <button type="button" data-value="difficile">😅 Difficile</button>
+        <h3>Tu as utilisé les quantités prévues ?</h3>
+        ${quantifiable.length > 0 ? `
+        <div id="usedQtyReadout">
+          ${quantifiable.map(q => `<p class="hint" style="margin:4px 0;">${translateIngredient(q.name)} — <strong>${formatAmountUnit(q.defaultAmount, q.unit)}</strong></p>`).join("")}
         </div>
-        <p class="hint" style="margin-top:18px;">Une photo de ton plat ? (facultatif)</p>
-        <input type="file" id="donePhotoInput" accept="image/*" capture="environment" hidden>
-        <div id="photoPreviewWrap" class="photo-preview-wrap" hidden>
-          <img id="photoPreview" alt="">
-          <button type="button" id="recropPhotoBtn" aria-label="Recadrer la photo" style="right:38px;">✂️</button>
-          <button type="button" id="removePhotoBtn" aria-label="Retirer la photo">✕</button>
-        </div>
-        <button type="button" id="choosePhotoBtn" class="photo-btn">📷 Ajouter une photo</button>
-        ${usedFromSelection.length > 0 ? `
-        <h3 style="margin-top:22px;">Qu'est-ce qu'il ne te reste plus ?</h3>
-        <p class="hint">Coche les ingrédients que tu as entièrement utilisés — ils seront retirés de ton frigo. Les autres verront leur quantité automatiquement réduite quand elle est connue.</p>
+        <button type="button" class="rate-taste-btn" id="editQtyBtn" style="margin-top:4px;">Modifier les quantités utilisées</button>
+        <div id="usedQtyEditPanel" hidden style="margin-top:10px;">
+          ${quantifiable.map(q => `
+            <div class="dyn-row ing-row">
+              <span style="flex:1;font-size:14px;">${translateIngredient(q.name)}</span>
+              <input type="number" min="0" step="0.1" class="ing-qty used-qty-input" data-v="${q.v}" value="${q.defaultAmount}">
+              <span style="font-size:13px;color:var(--ink-dim);min-width:32px;">${QUANTITY_UNITS[q.unit]}</span>
+            </div>
+          `).join("")}
+        </div>` : ""}
+        ${nonQuantifiable.length > 0 ? `
+        <p class="hint" style="margin-top:${quantifiable.length > 0 ? "14" : "0"}px;">Ingrédients sans quantité précise — coche ceux que tu as entièrement utilisés (facultatif) :</p>
         <div class="chips" id="doneChips">
-          ${usedFromSelection.map(v => {
-            const c = computeConsumption(v);
-            const hint = c ? (c.remaining ? ` <span class="qty-hint">(≈${c.remaining.amount}${QUANTITY_UNITS[c.remaining.unit]} restant)</span>` : ` <span class="qty-hint">(≈0 restant)</span>`) : "";
-            return `<button class="chip" data-value="${v}">${translateIngredient(v)}${hint}</button>`;
-          }).join("")}
+          ${nonQuantifiable.map(v => `<button type="button" class="chip" data-value="${v}">${translateIngredient(v)}</button>`).join("")}
         </div>` : ""}
-        ${(servings || BASE_SERVINGS) > 1 ? `
-        <h3 style="margin-top:22px;">Des restes pour plus tard ?</h3>
-        <div class="settings-row" style="padding:0;border:none;">
-          <div class="settings-desc">Garde une trace des portions non mangées tout de suite, pour y repenser plus tard dans "Cuisiner".</div>
-          <label class="switch">
-            <input type="checkbox" id="leftoverToggle">
-            <span class="switch-slider"></span>
-          </label>
-        </div>
-        <div class="servings-stepper" id="leftoverPortionsRow" hidden>
-          <span>Portions restantes</span>
-          <button type="button" id="leftoverMinus" aria-label="Moins de portions">−</button>
-          <span id="leftoverCount">1</span>
-          <button type="button" id="leftoverPlus" aria-label="Plus de portions">+</button>
-        </div>` : ""}
-        ${currentUser ? `
-        <h3 style="margin-top:22px;">Partager avec la communauté ?</h3>
-        <div class="settings-row" style="padding:0;border:none;">
-          <div class="settings-desc">Visible par tous, avec ton pseudo. Reste décoché pour garder cette recette privée.</div>
-          <label class="switch">
-            <input type="checkbox" id="shareToggle">
-            <span class="switch-slider"></span>
-          </label>
-        </div>
-        <input type="text" id="shareTitle" class="search-input" placeholder="Titre de ta publication (facultatif)" maxlength="80" style="margin-top:10px;" hidden>
-        <input type="text" id="shareTaggedUser" class="search-input" placeholder="👤 Fait avec... (pseudo, facultatif)" maxlength="24" style="margin-top:10px;" hidden>
-        <textarea id="shareComment" class="search-input" placeholder="Un petit mot sur ta recette (facultatif — @pseudo pour mentionner quelqu'un)" style="margin-top:10px;resize:vertical;min-height:60px;" hidden></textarea>
-        <div id="sharePhotoBlock" style="margin-top:12px;" hidden>
-          <p class="hint" style="margin:0 0 8px;">Photo de la publication</p>
-          <div id="sharePhotoPreviewWrap" class="photo-preview-wrap" hidden><img id="sharePhotoPreview" alt=""></div>
-          <div class="photo-choice-grid">
-            <button type="button" class="photo-choice-btn" id="shareGalleryBtn">🖼 Choisir une photo</button>
-            <button type="button" class="photo-choice-btn" id="shareCameraBtn">📸 Prendre une photo</button>
-            <button type="button" class="photo-choice-btn" id="shareRecipePhotoBtn">🍽 Photo de la recette</button>
-            <button type="button" class="photo-choice-btn" id="shareNoPhotoBtn">🚫 Sans photo</button>
-          </div>
-          <input type="file" id="shareGalleryInput" accept="image/*" hidden>
-          <input type="file" id="shareCameraInput" accept="image/*" capture="environment" hidden>
-        </div>
-        ` : ""}
-        <button class="confirm-btn" id="confirmDoneBtn">Valider</button>
+        <button type="button" class="primary-btn" id="confirmQtyBtn" style="margin-top:18px;">✅ Oui, cuisiner</button>
       </div>
     `;
-    const shareToggle = document.getElementById("shareToggle");
-    const sharePhotoPreviewWrap = document.getElementById("sharePhotoPreviewWrap");
-    const sharePhotoPreview = document.getElementById("sharePhotoPreview");
-    const shareChoiceBtns = { recipe: document.getElementById("shareRecipePhotoBtn"), none: document.getElementById("shareNoPhotoBtn"), custom: null };
-    const shareGalleryBtnEl = document.getElementById("shareGalleryBtn");
-    const shareCameraBtnEl = document.getElementById("shareCameraBtn");
-    function updateSharePhotoUI(){
-      [shareGalleryBtnEl, shareCameraBtnEl, shareChoiceBtns.recipe, shareChoiceBtns.none].forEach(b => b.classList.remove("selected"));
-      if (sharePhoto.mode === "recipe") {
-        shareChoiceBtns.recipe.classList.add("selected");
-        sharePhotoPreview.src = recipe.image;
-        sharePhotoPreviewWrap.hidden = false;
-      } else if (sharePhoto.mode === "none") {
-        shareChoiceBtns.none.classList.add("selected");
-        sharePhotoPreviewWrap.hidden = true;
-      } else if (sharePhoto.mode === "custom") {
-        (sharePhoto.source === "camera" ? shareCameraBtnEl : shareGalleryBtnEl).classList.add("selected");
-        sharePhotoPreview.src = sharePhoto.dataUrl;
-        sharePhotoPreviewWrap.hidden = false;
-      }
-    }
-    if (shareToggle) {
-      shareToggle.addEventListener("change", () => {
-        document.getElementById("shareTitle").hidden = !shareToggle.checked;
-        document.getElementById("shareTaggedUser").hidden = !shareToggle.checked;
-        document.getElementById("shareComment").hidden = !shareToggle.checked;
-        document.getElementById("sharePhotoBlock").hidden = !shareToggle.checked;
-        if (shareToggle.checked) {
-          if (capturedPhoto) { sharePhoto = { mode: "custom", dataUrl: capturedPhoto }; }
-          updateSharePhotoUI();
-        }
+    const editQtyBtn = document.getElementById("editQtyBtn");
+    if (editQtyBtn) {
+      editQtyBtn.addEventListener("click", () => {
+        document.getElementById("usedQtyEditPanel").hidden = false;
+        document.getElementById("usedQtyReadout").hidden = true;
+        editQtyBtn.hidden = true;
       });
     }
-    if (currentUser) {
-      const shareGalleryInput = document.getElementById("shareGalleryInput");
-      const shareCameraInput = document.getElementById("shareCameraInput");
-      document.getElementById("shareGalleryBtn").addEventListener("click", () => shareGalleryInput.click());
-      document.getElementById("shareCameraBtn").addEventListener("click", () => shareCameraInput.click());
-      async function handleSharePhotoFile(input, source){
-        const file = input.files[0];
-        if (!file) return;
-        const dataUrl = await resizePhoto(file, 800);
-        if (dataUrl) { sharePhoto = { mode: "custom", dataUrl, source }; updateSharePhotoUI(); }
-      }
-      shareGalleryInput.addEventListener("change", () => handleSharePhotoFile(shareGalleryInput, "gallery"));
-      shareCameraInput.addEventListener("change", () => handleSharePhotoFile(shareCameraInput, "camera"));
-      shareChoiceBtns.recipe.addEventListener("click", () => { sharePhoto = { mode: "recipe", dataUrl: null }; updateSharePhotoUI(); });
-      shareChoiceBtns.none.addEventListener("click", () => { sharePhoto = { mode: "none", dataUrl: null }; updateSharePhotoUI(); });
-    }
-    document.querySelectorAll("#difficultyPicker button").forEach(btn => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll("#difficultyPicker button").forEach(b => b.classList.remove("selected"));
-        btn.classList.add("selected");
-        difficulty = btn.dataset.value;
-      });
-    });
-    let leftoverPortions = 0;
-    const leftoverToggle = document.getElementById("leftoverToggle");
-    if (leftoverToggle) {
-      const maxLeftover = Math.max(1, (servings || BASE_SERVINGS) - 1);
-      const leftoverRow = document.getElementById("leftoverPortionsRow");
-      const leftoverCountEl = document.getElementById("leftoverCount");
-      let count = 1;
-      leftoverToggle.addEventListener("change", () => {
-        leftoverRow.hidden = !leftoverToggle.checked;
-        leftoverPortions = leftoverToggle.checked ? count : 0;
-      });
-      document.getElementById("leftoverMinus").addEventListener("click", () => {
-        count = Math.max(1, count - 1);
-        leftoverCountEl.textContent = count;
-        leftoverPortions = count;
-      });
-      document.getElementById("leftoverPlus").addEventListener("click", () => {
-        count = Math.min(maxLeftover, count + 1);
-        leftoverCountEl.textContent = count;
-        leftoverPortions = count;
-      });
-    }
-    const toRemove = new Set();
     document.querySelectorAll("#doneChips .chip").forEach(btn => {
       btn.addEventListener("click", () => {
         const v = btn.dataset.value;
@@ -5249,58 +5383,15 @@ function attachDoneFlow(recipe, servings){
         else { toRemove.add(v); btn.classList.add("selected"); }
       });
     });
-
-    const choosePhotoBtn = document.getElementById("choosePhotoBtn");
-    const photoInput = document.getElementById("donePhotoInput");
-    const photoPreviewWrap = document.getElementById("photoPreviewWrap");
-    const photoPreview = document.getElementById("photoPreview");
-    let rawPhoto = null; // photo redimensionnée avant recadrage, conservée pour pouvoir recadrer à nouveau sans perte
-    choosePhotoBtn.addEventListener("click", () => photoInput.click());
-    photoInput.addEventListener("change", async () => {
-      const file = photoInput.files[0];
-      if (!file) return;
-      choosePhotoBtn.textContent = "⏳ Traitement…";
-      const dataUrl = await resizePhoto(file, 1000);
-      choosePhotoBtn.textContent = "📷 Ajouter une photo";
-      if (!dataUrl) return;
-      rawPhoto = dataUrl;
-      const cropped = await openPhotoCropper(dataUrl);
-      if (cropped) {
-        capturedPhoto = cropped;
-        photoPreview.src = cropped;
-        photoPreviewWrap.hidden = false;
-        choosePhotoBtn.hidden = true;
-      }
-      photoInput.value = "";
-    });
-    document.getElementById("recropPhotoBtn").addEventListener("click", async () => {
-      if (!rawPhoto) return;
-      const cropped = await openPhotoCropper(rawPhoto);
-      if (cropped) { capturedPhoto = cropped; photoPreview.src = cropped; }
-    });
-    document.getElementById("removePhotoBtn").addEventListener("click", () => {
-      capturedPhoto = null;
-      rawPhoto = null;
-      photoInput.value = "";
-      photoPreviewWrap.hidden = true;
-      choosePhotoBtn.hidden = false;
-      choosePhotoBtn.textContent = "📷 Ajouter une photo";
-    });
-
-    document.getElementById("confirmDoneBtn").addEventListener("click", async (e) => {
-      addCookedDish(recipe, difficulty, capturedPhoto);
-      if (leftoverPortions > 0) addLeftover(recipe, leftoverPortions, capturedPhoto);
-      const consumptionMap = {};
-      usedFromSelection.forEach(v => { const c = computeConsumption(v); if (c) consumptionMap[v] = c; });
-      const wantsShare = shareToggle && shareToggle.checked;
-      if (!wantsShare) { finishRecipe(Array.from(toRemove), consumptionMap); return; }
-      e.target.disabled = true;
-      e.target.textContent = "Publication…";
-      const postTitle = document.getElementById("shareTitle").value.trim();
-      const comment = document.getElementById("shareComment").value.trim();
-      const taggedUsername = document.getElementById("shareTaggedUser").value.trim().replace(/^@/, "");
-      const ok = await publishToCommunity(recipe, difficulty, sharePhoto, postTitle, comment, taggedUsername || null);
-      finishRecipe(Array.from(toRemove), consumptionMap, ok);
+    document.getElementById("confirmQtyBtn").addEventListener("click", () => {
+      // Capture les quantités affichées (par défaut celles de la recette, ou modifiées si le panneau a été
+      // ouvert) avant de passer à l'écran suivant — ce sont elles, et uniquement elles, qui détermineront ce
+      // qui sort du frigo. Le nombre de portions mangées (écran suivant) n'intervient jamais dans ce calcul.
+      document.querySelectorAll(".used-qty-input").forEach(el => {
+        const amount = Number(el.value);
+        if (!isNaN(amount) && amount >= 0) usedQuantities[el.dataset.v] = amount;
+      });
+      renderDetailsScreen();
     });
   });
 }
@@ -5995,7 +6086,10 @@ function renderCustomRecipes(){
     btn.addEventListener("click", async () => {
       if (!(await confirmAction("Cette recette perso sera supprimée définitivement."))) return;
       saveCustomRecipes(loadCustomRecipes().filter(r => r.id !== btn.dataset.id));
-      deleteCustomRecipeFromCloud(btn.dataset.id);
+      deleteCustomRecipeFromCloud(btn.dataset.id); // table de partage communautaire (inchangé)
+      forceCloudSync(); // sauvegarde personnelle complète (user_data) : immédiate, pas de débounce ici —
+                         // sinon la recette peut réapparaître si l'app est rechargée avant 1,2s (pullFromCloudAndMerge
+                         // restaurerait alors un instantané cloud qui la contient encore).
       renderCustomRecipes();
     });
   });
@@ -6040,7 +6134,10 @@ function saveNewCustomRecipe(){
     errorEl.style.display = "block";
     return;
   }
-  syncCustomRecipeToCloud(newRecipe);
+  syncCustomRecipeToCloud(newRecipe); // table de partage communautaire (inchangé)
+  forceCloudSync(); // sauvegarde personnelle complète (user_data) : immédiate, pas de débounce ici — sinon
+                     // la recette peut disparaître si l'app est fermée/rechargée avant 1,2s (pullFromCloudAndMerge
+                     // écraserait alors le stockage local avec un instantané cloud qui ne la contient pas encore).
   customRecipeFormOpen = false;
   customRecipeDraft = null;
   renderCustomRecipes();
