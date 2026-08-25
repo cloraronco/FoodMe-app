@@ -375,6 +375,13 @@
     color:var(--ink);cursor:pointer;
   }
   .mention-suggest-item:hover{background:var(--surface-2);color:var(--tomato-dark);}
+  .ingredient-suggest-item{
+    display:block;width:100%;text-align:left;background:none;border:none;
+    padding:9px 12px;font-family:var(--font-body);font-size:13.5px;font-weight:600;
+    color:var(--ink);cursor:pointer;
+  }
+  .ingredient-suggest-item:hover{background:var(--surface-2);color:var(--tomato-dark);}
+  .ingredient-suggest-cat{font-weight:400;color:var(--ink-dim);font-size:12px;}
   .mention-link{color:var(--tomato-dark);font-weight:600;cursor:pointer;}
   .mention-link:hover{text-decoration:underline;}
   .feed-tagged-link{color:var(--ink-dim);font-weight:600;cursor:pointer;}
@@ -3124,7 +3131,7 @@ function computeFeasibility(ingredients, servings){
   const shortages = [];
   let quantifiedCount = 0;
   relevant.forEach(ing => {
-    if (!ingredientInFridge(ing.name, fridgeValues)) { missing.push(ing); return; }
+    if (!fridgeValues.some(v => ingredientMatchesFridgeValueForIngredient(ing, v))) { missing.push(ing); return; }
     if (!quantitiesOn || ing.amount == null || !ing.unit) return;
     quantifiedCount++;
     const needed = toBaseQuantity(ing.amount * ratio, ing.unit);
@@ -3356,6 +3363,17 @@ function ingredientMatchesFridgeValue(name, fridgeValue){
 }
 function ingredientInFridge(name, fridgeValues){
   return fridgeValues.some(v => ingredientMatchesFridgeValue(name, v));
+}
+// Reconnaissance d'un ingrédient de RECETTE (objet {name, ingredientId?, ...}) face à une valeur du frigo.
+// Priorité à l'identifiant mémorisé (`ingredientId`, choisi via la suggestion du formulaire de recette
+// perso) — comparaison exacte, fiable, sans ambiguïté de texte. Sans identifiant (recette créée avant
+// cette évolution, recette TheMealDB, ou ingrédient tapé librement sans sélectionner de suggestion), on
+// retombe exactement sur la comparaison texte existante (`ingredientMatchesFridgeValue`), inchangée —
+// aucune régression pour ce qui existait déjà. Point d'entrée unique, utilisé partout où l'identité d'un
+// ingrédient de recette compte : FeasibilityEngine, fin de recette (consommation), liste de courses.
+function ingredientMatchesFridgeValueForIngredient(ing, fridgeValue){
+  if (ing && ing.ingredientId) return ing.ingredientId === fridgeValue;
+  return ingredientMatchesFridgeValue((ing && ing.name) || "", fridgeValue);
 }
 
 // ---- Ingrédients "de base" qu'on considère toujours dispo (pas besoin de les sélectionner) ----
@@ -4398,7 +4416,8 @@ async function buildWeekShoppingList(){
     }
     if (!recipe) continue;
     const ratio = (w.servings || BASE_SERVINGS) / BASE_SERVINGS;
-    recipe.ingredients.forEach(({ name, measure, amount, unit }) => {
+    recipe.ingredients.forEach((ing) => {
+      const { name, measure, amount, unit } = ing;
       const n = normalize(name);
       if (isBasic(n)) return;
       if (quantitiesOn && amount != null && unit) {
@@ -4409,7 +4428,7 @@ async function buildWeekShoppingList(){
           return;
         }
       }
-      if (ingredientInFridge(name, Array.from(selected))) return; // déjà au frigo
+      if (Array.from(selected).some(v => ingredientMatchesFridgeValueForIngredient(ing, v))) return; // déjà au frigo
       const trimmed = (measure || "").trim();
       const isPrecise = /^\d+(\.\d+)?$/.test(trimmed);
       if (isPrecise) {
@@ -5029,7 +5048,7 @@ function attachDoneFlow(recipe, servings){
       if (error) console.warn("Comptage anonyme de cuisson impossible :", error);
     });
     const usedFromSelection = Array.from(selected).filter(v =>
-      recipe.ingredients.some(({ name }) => ingredientMatchesFridgeValue(name, v))
+      recipe.ingredients.some(ing => ingredientMatchesFridgeValueForIngredient(ing, v))
     );
     // Pour les ingrédients gardés (pas cochés "entièrement utilisé"), calcule ce que la recette a vraiment
     // consommé quand c'est possible (recette perso avec quantité + quantités Premium actives + quantité
@@ -5038,7 +5057,7 @@ function attachDoneFlow(recipe, servings){
     const fridgeQuantitiesAtCook = loadFridgeQuantities();
     function computeConsumption(v){
       if (!quantitiesOn) return null;
-      const ing = recipe.ingredients.find(({ name }) => name && ingredientMatchesFridgeValue(name, v));
+      const ing = recipe.ingredients.find(candidate => candidate.name && ingredientMatchesFridgeValueForIngredient(candidate, v));
       if (!ing || ing.amount == null || !ing.unit) return null;
       const stock = fridgeQuantitiesAtCook[v];
       if (!stock) return null;
@@ -5515,7 +5534,7 @@ let customRecipeFilters = { mealType: null, temperature: null, equipment: new Se
 function newCustomRecipeDraft(){
   return {
     title: "",
-    ingredients: [{ measure: "", name: "", amount: "", unit: "" }],
+    ingredients: [{ measure: "", name: "", amount: "", unit: "", ingredientId: null }],
     steps: [{ text: "", timerMinutes: null }],
     difficulty: null,
     prepMinutes: "",
@@ -5526,6 +5545,90 @@ function newCustomRecipeDraft(){
     equipment: []
   };
 }
+
+// ---- Autocomplétion du nom d'ingrédient dans le formulaire de recette perso (champ .ing-name) ----
+// Calquée sur le patron déjà utilisé pour l'autocomplétion des @pseudo (getMentionSuggestBox /
+// updateMentionSuggest) : boîte flottante unique, positionnée sous le champ actif, recherche déclenchée
+// par un input délégué, sélection par clic. Contrairement aux @pseudo, la recherche est 100% locale et
+// synchrone (le référentiel CATEGORIES est déjà en mémoire) — pas de réseau, pas d'état de chargement.
+let ingredientSuggestBox = null;
+let ingredientSuggestTarget = null; // le champ .ing-name actif
+function getIngredientSuggestBox(){
+  if (!ingredientSuggestBox) {
+    ingredientSuggestBox = document.createElement("div");
+    ingredientSuggestBox.className = "mention-suggest-box"; // même habillage que la boîte @pseudo
+    ingredientSuggestBox.hidden = true;
+    document.body.appendChild(ingredientSuggestBox);
+  }
+  return ingredientSuggestBox;
+}
+function hideIngredientSuggest(){
+  if (ingredientSuggestBox) ingredientSuggestBox.hidden = true;
+  ingredientSuggestTarget = null;
+}
+// Normalisation tolérante aux accents, strictement locale à cette recherche — ne modifie pas normalize()
+// (utilisée partout ailleurs pour le matching frigo/recettes) afin de ne rien changer d'existant.
+function foldAccentsForSuggest(s){
+  return s.normalize("NFD").replace(/\p{Diacritic}/gu, "");
+}
+// Résultats triés : d'abord les libellés qui COMMENCENT par le texte tapé, puis ceux qui le CONTIENNENT
+// seulement — plafonné à 6 suggestions. Recherche dans les 51 entrées de CATEGORIES (miroir exact de la
+// table `ingredients`), avec leur catégorie pour lever l'ambiguïté entre noms proches (ex. "Poulet" vs
+// "Blanc de poulet").
+function searchIngredientSuggestions(query){
+  const q = foldAccentsForSuggest(normalize(query));
+  if (!q) return [];
+  const starts = [], contains = [];
+  CATEGORIES.forEach(cat => cat.items.forEach(([label, value]) => {
+    const n = foldAccentsForSuggest(normalize(label));
+    if (n.startsWith(q)) starts.push({ label, value, category: cat.name });
+    else if (n.includes(q)) contains.push({ label, value, category: cat.name });
+  }));
+  return starts.concat(contains).slice(0, 6);
+}
+function updateIngredientSuggest(el){
+  const query = el.value.trim();
+  if (query.length < 2) { hideIngredientSuggest(); return; }
+  const matches = searchIngredientSuggestions(query);
+  if (matches.length === 0) { hideIngredientSuggest(); return; }
+  ingredientSuggestTarget = el;
+  const box = getIngredientSuggestBox();
+  const rect = el.getBoundingClientRect();
+  box.style.left = `${Math.round(rect.left)}px`;
+  box.style.top = `${Math.round(rect.bottom + 4)}px`;
+  box.style.width = `${Math.round(Math.max(rect.width, 220))}px`;
+  box.innerHTML = matches.map(m =>
+    `<button type="button" class="ingredient-suggest-item" data-ingredient-id="${escAttr(m.value)}" data-label="${escAttr(m.label)}">${escAttr(m.label)} <span class="ingredient-suggest-cat">— ${escAttr(m.category)}</span></button>`
+  ).join("");
+  box.hidden = false;
+}
+// Frappe manuelle dans un champ .ing-name : relance la recherche de suggestions, et efface l'ingredientId
+// mémorisé (constrainte : toute modification du texte après une sélection invalide cette sélection, pour
+// ne jamais garder un identifiant qui ne correspond plus à ce qui est affiché).
+document.addEventListener("input", (e) => {
+  if (!e.target.matches(".ing-name")) return;
+  const idx = Number(e.target.dataset.idx);
+  if (customRecipeDraft && customRecipeDraft.ingredients[idx]) customRecipeDraft.ingredients[idx].ingredientId = null;
+  updateIngredientSuggest(e.target);
+});
+document.addEventListener("click", (e) => {
+  const item = e.target.closest(".ingredient-suggest-item");
+  if (!item || !ingredientSuggestTarget) return;
+  const el = ingredientSuggestTarget;
+  const idx = Number(el.dataset.idx);
+  const label = item.dataset.label;
+  const ingredientId = item.dataset.ingredientId;
+  if (customRecipeDraft && customRecipeDraft.ingredients[idx]) {
+    customRecipeDraft.ingredients[idx].name = label; // nom humain affiché, jamais l'identifiant technique
+    customRecipeDraft.ingredients[idx].ingredientId = ingredientId;
+  }
+  el.value = label;
+  el.focus();
+  hideIngredientSuggest();
+});
+document.addEventListener("focusout", (e) => {
+  if (e.target.matches(".ing-name")) setTimeout(hideIngredientSuggest, 150);
+});
 
 function renderCustomRecipeFormHTML(draft){
   return `
@@ -5628,7 +5731,7 @@ function attachCustomRecipeFormListeners(){
     el.addEventListener("change", e => { draft.ingredients[Number(e.target.dataset.idx)].unit = e.target.value; });
   });
   document.getElementById("addIngredientRow").addEventListener("click", () => {
-    draft.ingredients.push({ measure: "", name: "", amount: "", unit: "" });
+    draft.ingredients.push({ measure: "", name: "", amount: "", unit: "", ingredientId: null });
     renderCustomRecipes();
   });
   document.querySelectorAll('.dyn-remove[data-type="ingredient"]').forEach(btn => {
@@ -5842,7 +5945,8 @@ function saveNewCustomRecipe(){
     .map(i => ({
       measure: i.measure.trim(), name: i.name.trim(),
       amount: (i.amount !== "" && i.unit) ? Number(i.amount) : null,
-      unit: (i.amount !== "" && i.unit) ? i.unit : null
+      unit: (i.amount !== "" && i.unit) ? i.unit : null,
+      ingredientId: i.ingredientId || null
     }))
     .filter(i => i.name);
   const steps = draft.steps
