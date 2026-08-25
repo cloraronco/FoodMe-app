@@ -5115,10 +5115,35 @@ function attachDoneFlow(recipe, servings){
     // ex. huile d'olive) — seuls ces derniers ont encore besoin d'une case "entièrement utilisé" manuelle.
     const quantifiable = [];
     const nonQuantifiable = [];
+    // Convertit une valeur exprimée en unité de base (g pour la masse, mL pour le volume) vers l'unité
+    // d'origine de l'ingrédient de la recette (g/kg/mL/L/pièce) — inverse de toBaseQuantity, volontairement
+    // distinct de fromBaseQuantity qui choisit l'unité "la plus lisible" (kg/L au-delà d'un seuil) : ici on
+    // veut rester dans l'unité déjà affichée pour cet ingrédient, pas en changer au passage.
+    function baseValueToUnit(baseValue, unit){
+      return (unit === "kg" || unit === "L") ? round2(baseValue / 1000) : round2(baseValue);
+    }
     usedFromSelection.forEach(v => {
       const ing = recipe.ingredients.find(candidate => candidate.name && ingredientMatchesFridgeValueForIngredient(candidate, v));
       if (quantitiesOn && ing && ing.amount != null && ing.unit) {
-        quantifiable.push({ v, name: ing.name, unit: ing.unit, defaultAmount: round2(ing.amount * ratio) });
+        const plannedAmount = round2(ing.amount * ratio);
+        const stock = fridgeQuantitiesAtCook[v];
+        // Quantité proposée par défaut = min(quantité prévue par la recette, stock réellement disponible) —
+        // jamais une quantité fictive que le frigo ne peut pas fournir. Seulement quand le stock est connu
+        // et exprimé dans la même famille d'unité (masse/volume/pièce) que la recette ; sinon comportement
+        // inchangé (on ne peut pas comparer, on ne plafonne pas).
+        let defaultAmount = plannedAmount;
+        let cappedByStock = false;
+        let stockInIngUnit = null;
+        const plannedBase = toBaseQuantity(plannedAmount, ing.unit);
+        const stockBase = stock ? toBaseQuantity(stock.amount, stock.unit) : null;
+        if (plannedBase && stockBase && plannedBase.family === stockBase.family) {
+          stockInIngUnit = baseValueToUnit(stockBase.value, ing.unit);
+          if (stockBase.value < plannedBase.value) {
+            defaultAmount = stockInIngUnit;
+            cappedByStock = true;
+          }
+        }
+        quantifiable.push({ v, name: ing.name, unit: ing.unit, defaultAmount, cappedByStock, stockInIngUnit });
       } else {
         nonQuantifiable.push(v);
       }
@@ -5344,17 +5369,20 @@ function attachDoneFlow(recipe, servings){
         addCookedDish(recipe, difficulty, capturedPhoto);
         const leftoverAmount = cookedServings - eatenPortions;
         if (leftoverAmount > 0 && keepLeftover) addLeftover(recipe, leftoverAmount, capturedPhoto);
+        // Uniquement pour informer l'utilisateur sur l'écran de succès (voir finishRecipe) — n'intervient
+        // dans aucun calcul de consommation, ne remplace ni ne duplique addLeftover ci-dessus.
+        const leftoverInfo = { remaining: leftoverAmount, kept: keepLeftover, eaten: eatenPortions };
         const consumptionMap = {};
         usedFromSelection.forEach(v => { const c = computeConsumption(v); if (c) consumptionMap[v] = c; });
         const wantsShare = shareToggle && shareToggle.checked;
-        if (!wantsShare) { finishRecipe(Array.from(toRemove), consumptionMap); return; }
+        if (!wantsShare) { finishRecipe(Array.from(toRemove), consumptionMap, undefined, leftoverInfo); return; }
         e.target.disabled = true;
         e.target.textContent = "Publication…";
         const postTitle = document.getElementById("shareTitle").value.trim();
         const comment = document.getElementById("shareComment").value.trim();
         const taggedUsername = document.getElementById("shareTaggedUser").value.trim().replace(/^@/, "");
         const ok = await publishToCommunity(recipe, difficulty, sharePhoto, postTitle, comment, taggedUsername || null);
-        finishRecipe(Array.from(toRemove), consumptionMap, ok);
+        finishRecipe(Array.from(toRemove), consumptionMap, ok, leftoverInfo);
       });
     }
 
@@ -5372,16 +5400,23 @@ function attachDoneFlow(recipe, servings){
         <h3>Tu as utilisé les quantités prévues ?</h3>
         ${quantifiable.length > 0 ? `
         <div id="usedQtyReadout">
-          ${quantifiable.map(q => `<p class="hint" style="margin:4px 0;">${translateIngredient(q.name)} — <strong>${formatAmountUnit(q.defaultAmount, q.unit)}</strong></p>`).join("")}
+          ${quantifiable.map(q => {
+            // Note affichée uniquement quand le défaut proposé a dû être plafonné au stock réel — jamais
+            // sur le cas normal (stock suffisant), qui reste identique à avant.
+            let note = "";
+            if (q.cappedByStock) note = q.defaultAmount <= 0 ? " (tu n'en as plus)" : " (tout ton stock)";
+            return `<p class="hint" style="margin:4px 0;">${translateIngredient(q.name)} — <strong>${formatAmountUnit(q.defaultAmount, q.unit)}</strong>${note}</p>`;
+          }).join("")}
         </div>
         <button type="button" class="rate-taste-btn" id="editQtyBtn" style="margin-top:4px;">Modifier les quantités utilisées</button>
         <div id="usedQtyEditPanel" hidden style="margin-top:10px;">
           ${quantifiable.map(q => `
             <div class="dyn-row ing-row">
               <span style="flex:1;font-size:14px;">${translateIngredient(q.name)}</span>
-              <input type="number" min="0" step="0.1" class="ing-qty used-qty-input" data-v="${q.v}" value="${q.defaultAmount}">
+              <input type="number" min="0" step="0.1" class="ing-qty used-qty-input" data-v="${q.v}" data-stock="${q.stockInIngUnit != null ? q.stockInIngUnit : ""}" value="${q.defaultAmount}">
               <span style="font-size:13px;color:var(--ink-dim);min-width:32px;">${QUANTITY_UNITS[q.unit]}</span>
             </div>
+            <p class="hint qty-stock-warning" data-warn-for="${q.v}" style="display:none;color:var(--danger,#B23A2E);margin:2px 0 8px;">⚠️ Tu n'as que ${q.stockInIngUnit != null ? formatAmountUnit(q.stockInIngUnit, q.unit) : ""} en stock d'après Olymi — au-delà, cet ingrédient repassera en quantité inconnue.</p>
           `).join("")}
         </div>` : ""}
         ${nonQuantifiable.length > 0 ? `
@@ -5400,6 +5435,18 @@ function attachDoneFlow(recipe, servings){
         editQtyBtn.hidden = true;
       });
     }
+    // Avertissement non bloquant, purement informatif : n'apparaît que si la saisie manuelle dépasse le
+    // stock connu, disparaît dès qu'on redescend à ce stock ou en dessous. Ne modifie ni le stock ni la
+    // recette — la valeur saisie reste simplement l'override utilisé pour cette cuisson (voir confirmQtyBtn).
+    document.querySelectorAll(".used-qty-input").forEach(el => {
+      el.addEventListener("input", () => {
+        const warnEl = document.querySelector(`.qty-stock-warning[data-warn-for="${el.dataset.v}"]`);
+        if (!warnEl) return;
+        const stock = el.dataset.stock !== "" ? Number(el.dataset.stock) : null;
+        const typed = Number(el.value);
+        warnEl.style.display = (stock != null && !isNaN(typed) && typed > stock) ? "block" : "none";
+      });
+    });
     document.querySelectorAll("#doneChips .chip").forEach(btn => {
       btn.addEventListener("click", () => {
         const v = btn.dataset.value;
@@ -5443,7 +5490,31 @@ async function logConsumptionEvents(usedUpValues, consumptionMap){
     }));
   } catch (e) { console.warn("Journal de consommation impossible pour le moment :", e); }
 }
-function finishRecipe(usedUpValues, consumptionMap, shareResult){
+// Construit la ligne (facultative) qui explique ce qu'il est advenu des portions non mangées — jamais de
+// mention du frigo ici, volontairement : ce message ne parle que du reste, pas du stock brut. `remaining`
+// = portions cuisinées - portions mangées (0 si tout mangé), `kept` = choix explicite de garder ce reste,
+// `eaten` = portions mangées (distingue "rien mangé, tout gardé" de "une partie mangée, le reste gardé").
+function buildLeftoverResultMessage(remaining, kept, eaten){
+  if (!remaining || remaining <= 0) return ""; // Cas 1 : tout mangé, rien à signaler
+  const plural = remaining > 1;
+  if (kept) {
+    if (eaten === 0) {
+      // Cas 3 : aucune portion mangée, tout est gardé
+      return plural
+        ? `🍱 Les ${remaining} portions sont gardées en reste — tu les retrouveras dans le bandeau Restes.`
+        : `🍱 La portion est gardée en reste — tu la retrouveras dans le bandeau Restes.`;
+    }
+    // Cas 2 : une partie mangée, le reste conservé
+    return plural
+      ? `🍱 ${remaining} portions gardées en reste — tu les retrouveras dans le bandeau Restes.`
+      : `🍱 1 portion gardée en reste — tu la retrouveras dans le bandeau Restes.`;
+  }
+  // Cas 4 : des portions restaient mais l'utilisateur a choisi de ne pas les garder
+  return plural
+    ? `Les ${remaining} portions restantes n'ont pas été conservées comme reste.`
+    : `La portion restante n'a pas été conservée comme reste.`;
+}
+function finishRecipe(usedUpValues, consumptionMap, shareResult, leftoverInfo){
   consumptionMap = consumptionMap || {};
   if (isAntiWasteActive()) {
     const expiry = loadExpiryDates();
@@ -5485,11 +5556,13 @@ function finishRecipe(usedUpValues, consumptionMap, shareResult){
   else if (shareResult === "tag_not_found") shareMsg = "<br>🎉 Partagée avec la communauté !<br>⚠️ Le pseudo tagué n'a pas été trouvé, vérifie l'orthographe.";
   else if (shareResult === "tag_not_allowed") shareMsg = "<br>🎉 Partagée avec la communauté !<br>⚠️ Cette personne n'autorise pas les tags, elle n'a pas été ajoutée.";
   else if (shareResult === false) shareMsg = "<br>⚠️ Le partage n'a pas fonctionné, réessaie plus tard depuis Mes plats.";
+  const leftoverMsgText = leftoverInfo ? buildLeftoverResultMessage(leftoverInfo.remaining, leftoverInfo.kept, leftoverInfo.eaten) : "";
+  const leftoverMsg = leftoverMsgText ? `<br>${leftoverMsgText}` : "";
   document.getElementById("results").innerHTML = `
     <div class="success-card">
       <span class="success-icon">✅</span><br>
       <strong>Recette marquée comme faite !</strong>
-      ${usedUpValues.length > 0 ? "<br>Ta liste d'ingrédients a été mise à jour." : ""}${shareMsg}
+      ${usedUpValues.length > 0 ? "<br>Ta liste d'ingrédients a été mise à jour." : ""}${leftoverMsg}${shareMsg}
       <div style="margin-top:16px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
         <button type="button" class="primary-btn" id="continueCookingBtn" style="width:auto;padding:11px 18px;">🍽 Continuer à cuisiner</button>
         <button type="button" class="rate-taste-btn" id="viewMesPlatsBtn" style="align-self:center;">Voir Mes plats</button>
