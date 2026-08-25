@@ -556,7 +556,9 @@
   .leftover-row:first-child{border-top:none;}
   .leftover-info{display:flex;align-items:center;gap:8px;min-width:0;}
   .leftover-info img{width:32px;height:32px;border-radius:8px;object-fit:cover;flex-shrink:0;}
+  .leftover-text{display:flex;flex-direction:column;min-width:0;gap:1px;}
   .leftover-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .leftover-status{font-size:11px;opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .leftover-actions{display:flex;gap:6px;flex-shrink:0;}
   .leftover-actions button{font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:4px 9px;background:#fff;cursor:pointer;}
   .leftover-eat{color:var(--basil-ink);border-color:var(--basil)!important;}
@@ -4350,13 +4352,29 @@ function addLeftover(recipe, portions, photo){
   if (!portions || portions <= 0) return;
   const list = loadLeftovers();
   const cookedAt = new Date();
-  const bestBefore = new Date(cookedAt.getTime() + 3 * 86400000); // 3 jours par défaut
+  // Règle produit validée : un reste de plat maison se conserve 48h maximum à partir de l'heure réelle de
+  // cuisson, point. Volontairement indépendant de la durée de conservation des ingrédients crus (colonne
+  // `ingredients.default_shelf_life_days`, non utilisée ici) — un plat cuisiné n'hérite pas de la stabilité
+  // de ses ingrédients bruts, conformément aux recommandations officielles (restes ≤ 48h au réfrigérateur).
+  const bestBefore = new Date(cookedAt.getTime() + 48 * 3600000);
   list.unshift({
     id: recipe.id + "_reste_" + cookedAt.getTime(),
     recipeId: recipe.id, title: recipe.title, image: photo || recipe.image,
     portions, cookedAt: cookedAt.toISOString(), bestBefore: bestBefore.toISOString()
   });
   saveLeftovers(list);
+}
+// Statut de conservation d'un reste, calculé à l'heure près depuis `cookedAt`/`bestBefore` (horodatages
+// complets), volontairement SANS passer par `daysUntil()` : cette dernière est conçue pour les dates
+// calendaires (sans heure) de péremption du frigo et n'est pas compatible avec un horodatage complet — la
+// réutiliser telle quelle produirait un calcul silencieusement faux (chaîne de date invalide → NaN).
+// Formulation UX volontairement en "fenêtre de conservation" (pas d'échéance précise à l'heure/jour près) :
+// l'utilisateur doit comprendre "consommable à tout moment dans ce délai", jamais "à manger pile à ce moment-là".
+function getLeftoverStatus(lo){
+  const hoursRemaining = (new Date(lo.bestBefore).getTime() - Date.now()) / 3600000;
+  if (hoursRemaining <= 0) return { emoji: "🔴", text: "Conservation dépassée", late: true };
+  if (hoursRemaining < 24) return { emoji: "🟠", text: "À consommer dans la journée", late: false };
+  return { emoji: "🟢", text: "À consommer dans les 2 jours", late: false };
 }
 // Bandeau affiché en haut de "Cuisiner" tant qu'il reste des restes à manger — conforme à la spec P0
 // ("les restes doivent pouvoir être proposés dans les recommandations lorsqu'ils sont pertinents").
@@ -4369,11 +4387,14 @@ function renderLeftoversBanner(){
     <div class="leftover-banner">
       <div class="leftover-banner-text">🍱 Il te reste des plats à manger</div>
       ${list.map(lo => {
-        const late = daysUntil(lo.bestBefore) < 0;
+        const status = getLeftoverStatus(lo);
         return `<div class="leftover-row" data-id="${lo.id}">
           <div class="leftover-info">
             <img src="${lo.image}" alt="">
-            <span class="leftover-title">${lo.title} · ${lo.portions} portion${lo.portions > 1 ? "s" : ""}${late ? " · ⚠️ à vérifier" : ""}</span>
+            <div class="leftover-text">
+              <span class="leftover-title">🍛 ${lo.title} · ${lo.portions} portion${lo.portions > 1 ? "s" : ""}</span>
+              <span class="leftover-status">${status.emoji} ${status.text}</span>
+            </div>
           </div>
           <div class="leftover-actions">
             <button type="button" class="leftover-eat" data-action="eat">🍽 Mangé</button>
@@ -4386,6 +4407,9 @@ function renderLeftoversBanner(){
     btn.addEventListener("click", () => {
       const id = btn.closest(".leftover-row").dataset.id;
       saveLeftovers(loadLeftovers().filter(lo => lo.id !== id));
+      // "Mangé" / "Jeter" : persistance immédiate de la suppression (mêmes garanties que forceCloudSync
+      // partout ailleurs) — n'affecte que la liste des restes ; aucun impact frigo, aucun inventory_consumption_event.
+      forceCloudSync();
     });
   });
 }
@@ -5451,7 +5475,11 @@ function finishRecipe(usedUpValues, consumptionMap, shareResult){
   renderCategories();
   updateSearchBtn();
   updateFridgeSummary();
-  scheduleCloudSync();
+  // Point de sauvegarde final de "J'ai fait cette recette" : à ce stade, addCookedDish, addLeftover (déjà appelés
+  // avant finishRecipe) et la décrémentation du frigo ci-dessus ont tous fini d'écrire en local. On pousse donc
+  // UNE seule fois l'état complet vers le cloud, immédiatement (pas de débounce), pour ne pas perdre ce résultat
+  // si l'app est fermée/rechargée dans la seconde qui suit — même principe que forceCloudSync pour les recettes perso.
+  forceCloudSync();
   let shareMsg = "";
   if (shareResult === true) shareMsg = "<br>🎉 Partagée avec la communauté !";
   else if (shareResult === "tag_not_found") shareMsg = "<br>🎉 Partagée avec la communauté !<br>⚠️ Le pseudo tagué n'a pas été trouvé, vérifie l'orthographe.";
