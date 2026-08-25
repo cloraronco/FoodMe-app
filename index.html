@@ -404,9 +404,8 @@
   .custom-recipe-form textarea.search-input{min-height:80px;resize:vertical;font-family:var(--font-body);}
   .custom-recipe-form h4{margin:16px 0 8px;font-size:12px;text-transform:uppercase;color:var(--tomato);letter-spacing:.08em;font-weight:700;}
   .dyn-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
-  .ing-precise-row{margin-top:-4px;margin-bottom:14px;padding-left:2px;}
-  .ing-precise-row .ing-amount{max-width:150px;font-size:13px;padding:8px 10px;}
-  .ing-precise-row .ing-unit{font-size:13px;border:1px solid var(--line);border-radius:8px;padding:8px 6px;background:var(--surface);color:var(--ink);font-family:var(--font-body);}
+  .ing-row .ing-qty{max-width:88px;flex:0 0 auto;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-family:var(--font-body);}
+  .ing-row .ing-unit{max-width:112px;flex:0 0 auto;font-size:13px;border:1px solid var(--line);border-radius:8px;padding:8px 6px;background:var(--surface);color:var(--ink);font-family:var(--font-body);}
   .dyn-row .search-input{margin-bottom:0;flex:1;min-width:0;}
   .dyn-remove{background:none;border:none;color:var(--ink-dim);font-size:14px;cursor:pointer;padding:6px;flex-shrink:0;}
   .dyn-remove:hover{color:var(--tomato);}
@@ -3069,6 +3068,13 @@ function formatShortExpiryDate(dateStr){
 }
 // ---- Gestion fine des quantités [PREMIUM] : quantité + unité par ingrédient du frigo ----
 const QUANTITY_UNITS = { g: "g", kg: "kg", mL: "mL", L: "L", piece: "pièce" };
+// Construit une chaîne de quantité affichable ("300g", "3pièce"...) à partir d'un montant + unité
+// structurés — même format que celui déjà utilisé partout ailleurs dans l'app (liste de courses, bandeau
+// de vérification...). Point de formatage unique, pour ne pas créer une deuxième convention d'affichage.
+function formatAmountUnit(amount, unit){
+  if (amount == null || amount === "" || !unit || !QUANTITY_UNITS[unit]) return "";
+  return `${amount}${QUANTITY_UNITS[unit]}`;
+}
 function loadFridgeQuantities(){
   try { return JSON.parse(localStorage.getItem("foodme_fridge_quantities") || "{}"); }
   catch(e) { return {}; }
@@ -3637,9 +3643,14 @@ function scaleMeasure(measure, ratio){
 }
 function renderIngredientsHTML(recipe, servings){
   const ratio = servings / BASE_SERVINGS;
-  return recipe.ingredients.map(({name, measure}) =>
-    `<li>${measure ? translateMeasure(scaleMeasure(measure, ratio)) + " " : ""}${translateIngredient(name)}</li>`
-  ).join("");
+  return recipe.ingredients.map(({name, measure, amount, unit}) => {
+    // `measure` reste la source d'affichage prioritaire (texte libre, TheMealDB, anciennes recettes).
+    // À défaut, si une quantité structurée existe (amount/unit) sans measure, on en dérive un affichage
+    // équivalent — pour ne plus jamais afficher un ingrédient sans quantité alors qu'elle est connue.
+    const display = measure ? translateMeasure(scaleMeasure(measure, ratio))
+      : (amount != null ? formatAmountUnit(round2(amount * ratio), unit) : "");
+    return `<li>${display ? display + " " : ""}${translateIngredient(name)}</li>`;
+  }).join("");
 }
 
 // ---- Estimation des temps (TheMealDB ne fournit pas cette donnée) ----
@@ -5636,21 +5647,22 @@ function renderCustomRecipeFormHTML(draft){
       <input type="text" id="customRecipeTitle" class="search-input" placeholder="Titre de la recette" maxlength="80" value="${escAttr(draft.title)}">
 
       <h4>Ingrédients</h4>
-      <p class="hint" style="margin-top:-6px;">La quantité précise (facultative) permet à Olymi de comparer avec ton frigo (fonctionnalité Premium).</p>
-      ${draft.ingredients.map((ing, i) => `
-        <div class="dyn-row" data-idx="${i}">
-          <input type="text" class="search-input ing-measure" data-idx="${i}" placeholder="Qté (ex : 200g)" value="${escAttr(ing.measure)}">
+      <p class="hint" style="margin-top:-6px;">Indique une quantité en g, kg, mL, L ou pièce pour qu'Olymi puisse comparer avec ton frigo (fonctionnalité Premium). Pour une quantité libre (« au goût », « 2 c. à soupe »...), choisis « Autre » comme unité.</p>
+      ${draft.ingredients.map((ing, i) => {
+        const isFree = ing.unit === "__free__";
+        const qtyValue = isFree ? ing.measure : ing.amount;
+        return `
+        <div class="dyn-row ing-row" data-idx="${i}">
           <input type="text" class="search-input ing-name" data-idx="${i}" placeholder="Ingrédient" value="${escAttr(ing.name)}">
-          ${draft.ingredients.length > 1 ? `<button type="button" class="dyn-remove" data-type="ingredient" data-idx="${i}" aria-label="Supprimer cet ingrédient">✕</button>` : ""}
-        </div>
-        <div class="dyn-row ing-precise-row" data-idx="${i}">
-          <input type="number" min="0" step="0.1" class="ing-amount" data-idx="${i}" placeholder="Quantité précise (facultatif)" value="${escAttr(ing.amount)}">
+          <input type="${isFree ? "text" : "number"}" ${isFree ? "" : `min="0" step="0.1"`} class="ing-qty" data-idx="${i}" placeholder="${isFree ? "ex : au goût" : "Qté"}" value="${escAttr(qtyValue)}">
           <select class="ing-unit" data-idx="${i}">
             <option value="">Unité</option>
             ${Object.entries(QUANTITY_UNITS).map(([k, lbl]) => `<option value="${k}"${ing.unit === k ? " selected" : ""}>${lbl}</option>`).join("")}
+            <option value="__free__"${isFree ? " selected" : ""}>Autre (texte libre)</option>
           </select>
+          ${draft.ingredients.length > 1 ? `<button type="button" class="dyn-remove" data-type="ingredient" data-idx="${i}" aria-label="Supprimer cet ingrédient">✕</button>` : ""}
         </div>
-      `).join("")}
+      `;}).join("")}
       <button type="button" class="add-recipe-btn" id="addIngredientRow">+ Ajouter un ingrédient</button>
 
       <h4>Étapes</h4>
@@ -5718,17 +5730,40 @@ function attachCustomRecipeFormListeners(){
 
   document.getElementById("customRecipeTitle").addEventListener("input", e => { draft.title = e.target.value; });
 
-  document.querySelectorAll(".ing-measure").forEach(el => {
-    el.addEventListener("input", e => { draft.ingredients[Number(e.target.dataset.idx)].measure = e.target.value; });
-  });
   document.querySelectorAll(".ing-name").forEach(el => {
     el.addEventListener("input", e => { draft.ingredients[Number(e.target.dataset.idx)].name = e.target.value; });
   });
-  document.querySelectorAll(".ing-amount").forEach(el => {
-    el.addEventListener("input", e => { draft.ingredients[Number(e.target.dataset.idx)].amount = e.target.value; });
+  // Champ quantité unique : en mode structuré (unité g/kg/mL/L/pièce), alimente amount et dérive
+  // automatiquement measure via formatAmountUnit (même formatage que le reste de l'app). En mode
+  // "texte libre" (__free__), alimente measure directement et vide amount — jamais les deux à la fois.
+  document.querySelectorAll(".ing-qty").forEach(el => {
+    el.addEventListener("input", e => {
+      const ing = draft.ingredients[Number(e.target.dataset.idx)];
+      if (ing.unit === "__free__") {
+        ing.measure = e.target.value;
+        ing.amount = "";
+      } else {
+        ing.amount = e.target.value;
+        ing.measure = formatAmountUnit(e.target.value, ing.unit);
+      }
+    });
   });
   document.querySelectorAll(".ing-unit").forEach(el => {
-    el.addEventListener("change", e => { draft.ingredients[Number(e.target.dataset.idx)].unit = e.target.value; });
+    el.addEventListener("change", e => {
+      const ing = draft.ingredients[Number(e.target.dataset.idx)];
+      const wasFree = ing.unit === "__free__";
+      const isFree = e.target.value === "__free__";
+      ing.unit = e.target.value;
+      if (wasFree !== isFree) {
+        // Changement de mode (structuré <-> libre) : on repart d'une quantité vide pour éviter
+        // qu'un nombre ne se retrouve interprété comme du texte libre ou l'inverse.
+        ing.amount = "";
+        ing.measure = "";
+        renderCustomRecipes();
+      } else if (!isFree) {
+        ing.measure = formatAmountUnit(ing.amount, ing.unit);
+      }
+    });
   });
   document.getElementById("addIngredientRow").addEventListener("click", () => {
     draft.ingredients.push({ measure: "", name: "", amount: "", unit: "", ingredientId: null });
