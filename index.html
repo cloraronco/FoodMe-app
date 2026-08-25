@@ -3128,9 +3128,12 @@ function findFridgeQuantityForIngredient(ingName){
 // - présent sans quantité connue → considéré disponible (comportement d'avant, inchangé).
 // Statut : 🟢 rien ne manque, 🔴 plus de la moitié des ingrédients manquent (courses obligatoires),
 // 🟠 le reste (faisable avec un peu de courses ciblées).
-function computeFeasibility(ingredients, servings){
+function computeFeasibility(ingredients, servings, referenceServings){
   const quantitiesOn = isQuantitiesActive();
-  const ratio = (servings || BASE_SERVINGS) / BASE_SERVINGS;
+  // referenceServings : nombre de personnes pour lequel les quantités de la recette ont été saisies
+  // (recipe.servings pour une recette perso). Optionnel : les appels existants (recherche, TheMealDB, qui
+  // n'ont pas cette notion) continuent de comparer à BASE_SERVINGS comme avant, sans rien changer pour eux.
+  const ratio = (servings || BASE_SERVINGS) / (referenceServings || BASE_SERVINGS);
   const fridgeValues = Array.from(selected);
   const relevant = (ingredients || []).filter(ing => ing.name && !isBasic(normalize(ing.name)));
   const missing = [];
@@ -3642,7 +3645,10 @@ function scaleMeasure(measure, ratio){
   return measure.replace(/^[\d./\s]+/, display + " ").trim();
 }
 function renderIngredientsHTML(recipe, servings){
-  const ratio = servings / BASE_SERVINGS;
+  // Les quantités saisies dans une recette perso correspondent à recipe.servings (ex. 2 personnes), pas
+  // forcément à BASE_SERVINGS — on utilise donc cette référence propre à la recette quand elle existe
+  // (TheMealDB et les anciennes recettes n'en ont pas : BASE_SERVINGS reste la référence par défaut).
+  const ratio = servings / (recipe.servings || BASE_SERVINGS);
   return recipe.ingredients.map(({name, measure, amount, unit}) => {
     // `measure` reste la source d'affichage prioritaire (texte libre, TheMealDB, anciennes recettes).
     // À défaut, si une quantité structurée existe (amount/unit) sans measure, on en dérive un affichage
@@ -4426,7 +4432,7 @@ async function buildWeekShoppingList(){
       } catch (e) { continue; }
     }
     if (!recipe) continue;
-    const ratio = (w.servings || BASE_SERVINGS) / BASE_SERVINGS;
+    const ratio = (w.servings || BASE_SERVINGS) / (recipe.servings || BASE_SERVINGS);
     recipe.ingredients.forEach((ing) => {
       const { name, measure, amount, unit } = ing;
       const n = normalize(name);
@@ -5072,7 +5078,7 @@ function attachDoneFlow(recipe, servings){
       if (!ing || ing.amount == null || !ing.unit) return null;
       const stock = fridgeQuantitiesAtCook[v];
       if (!stock) return null;
-      const ratio = (servings || BASE_SERVINGS) / BASE_SERVINGS;
+      const ratio = (servings || BASE_SERVINGS) / (recipe.servings || BASE_SERVINGS);
       const needed = toBaseQuantity(ing.amount * ratio, ing.unit);
       const available = toBaseQuantity(stock.amount, stock.unit);
       if (!needed || !available || needed.family !== available.family) return null;
@@ -5545,6 +5551,7 @@ let customRecipeFilters = { mealType: null, temperature: null, equipment: new Se
 function newCustomRecipeDraft(){
   return {
     title: "",
+    servings: BASE_SERVINGS,
     ingredients: [{ measure: "", name: "", amount: "", unit: "", ingredientId: null }],
     steps: [{ text: "", timerMinutes: null }],
     difficulty: null,
@@ -5646,6 +5653,16 @@ function renderCustomRecipeFormHTML(draft){
     <div class="custom-recipe-form">
       <input type="text" id="customRecipeTitle" class="search-input" placeholder="Titre de la recette" maxlength="80" value="${escAttr(draft.title)}">
 
+      <h4>Portions</h4>
+      <p class="hint" style="margin-top:-6px;">Les quantités des ingrédients ci-dessous correspondent à ce nombre de personnes.</p>
+      <div class="servings-stepper" id="customServingsStepper" style="margin-bottom:14px;">
+        <span>Cette recette est prévue pour</span>
+        <button type="button" id="customServingsMinus" aria-label="Moins de personnes">−</button>
+        <span id="customServingsCount">${draft.servings}</span>
+        <button type="button" id="customServingsPlus" aria-label="Plus de personnes">+</button>
+        <span>personne${draft.servings > 1 ? "s" : ""}</span>
+      </div>
+
       <h4>Ingrédients</h4>
       <p class="hint" style="margin-top:-6px;">Indique une quantité en g, kg, mL, L ou pièce pour qu'Olymi puisse comparer avec ton frigo (fonctionnalité Premium). Pour une quantité libre (« au goût », « 2 c. à soupe »...), choisis « Autre » comme unité.</p>
       ${draft.ingredients.map((ing, i) => {
@@ -5729,6 +5746,18 @@ function attachCustomRecipeFormListeners(){
   const draft = customRecipeDraft;
 
   document.getElementById("customRecipeTitle").addEventListener("input", e => { draft.title = e.target.value; });
+
+  // Portions de référence de la recette : mis à jour directement dans le DOM (comme le stepper de la fiche
+  // recette), sans re-rendu complet du formulaire, pour ne pas perdre le focus sur les autres champs.
+  const customServingsCountEl = document.getElementById("customServingsCount");
+  const customServingsStepperEl = document.getElementById("customServingsStepper");
+  const updateCustomServings = (delta) => {
+    draft.servings = Math.max(1, Math.min(20, draft.servings + delta));
+    customServingsCountEl.textContent = draft.servings;
+    customServingsStepperEl.querySelector("span:last-child").textContent = `personne${draft.servings > 1 ? "s" : ""}`;
+  };
+  document.getElementById("customServingsMinus").addEventListener("click", () => updateCustomServings(-1));
+  document.getElementById("customServingsPlus").addEventListener("click", () => updateCustomServings(1));
 
   document.querySelectorAll(".ing-name").forEach(el => {
     el.addEventListener("input", e => { draft.ingredients[Number(e.target.dataset.idx)].name = e.target.value; });
@@ -5995,7 +6024,7 @@ function saveNewCustomRecipe(){
   const list = loadCustomRecipes();
   const newRecipe = {
     id: `custom_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    title, ingredients, steps,
+    title, servings: draft.servings || BASE_SERVINGS, ingredients, steps,
     image: draft.photo || null,
     difficulty: draft.difficulty || null,
     prepMinutes: draft.prepMinutes ? Number(draft.prepMinutes) : null,
@@ -6111,8 +6140,8 @@ async function showCustomRecipeDetail(id, returnTo){
   const cookCount = await fetchCookCount(recipe.id);
   if (requestId !== cuisinerRequestId) return; // une autre recette a été ouverte entre-temps
 
-  let servings = BASE_SERVINGS;
-  let feasibility = computeFeasibility(recipe.ingredients, servings);
+  let servings = recipe.servings || BASE_SERVINGS;
+  let feasibility = computeFeasibility(recipe.ingredients, servings, recipe.servings);
   const isSaved = isRecipeSaved(recipe.id);
 
   resultsEl.innerHTML = `
@@ -6195,7 +6224,7 @@ async function showCustomRecipeDetail(id, returnTo){
     servings = Math.max(1, Math.min(20, servings + delta));
     servingsCountEl.textContent = servings;
     ingredientsListEl.innerHTML = renderIngredientsHTML(recipe, servings);
-    feasibility = computeFeasibility(recipe.ingredients, servings);
+    feasibility = computeFeasibility(recipe.ingredients, servings, recipe.servings);
     if (feasibilityBoxEl) { feasibilityBoxEl.innerHTML = renderFeasibilityBoxHTML(feasibility, servings); attachFeasibilityBoxListeners(feasibilityBoxEl, feasibility); }
   };
   document.getElementById("servingsMinus").addEventListener("click", () => updateServings(-1));
