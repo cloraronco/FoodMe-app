@@ -1445,7 +1445,7 @@ async function uploadAvatarPhoto(dataUrl){
 // Tant que personne n'est connecté, tout reste 100% local, exactement comme avant.
 async function pullFridgeFromInventoryItems(){
   const { data, error } = await sb.from("inventory_items")
-    .select("ingredient_id, quantity, unit, expiry_date, added_at, last_verified_at")
+    .select("ingredient_id, quantity, unit, expiry_date, added_at, last_verified_at, updated_at")
     .eq("owner_id", currentUser.id);
   if (error) throw error;
   return data || [];
@@ -1460,6 +1460,48 @@ function loadFridgeMeta(){
 function saveFridgeMeta(m){ localStorage.setItem("foodme_fridge_meta", JSON.stringify(m)); }
 // Ingrédients ajoutés/modifiés depuis la dernière synchro cloud (confiance à réinitialiser au prochain push).
 let dirtyIngredients = new Set();
+// Sous-ensemble de dirtyIngredients : uniquement les ingrédients dont la quantité a été modifiée via le
+// champ manuel (setFridgeQuantity), jamais via une consommation confirmée par une recette. Sert à ne
+// jamais fusionner par delta une correction manuelle explicite en cas de conflit multi-appareils (voir
+// pushFridgeToInventoryItems) — une consommation, elle, peut être fusionnée en toute sécurité (26/08/2026).
+let explicitReplaceIngredients = new Set();
+// Deltas de consommation réellement connus (calculés par computeConsumption, transmis par finishRecipe),
+// en attente d'envoi à la RPC atomique increment_inventory_quantity — id -> Array<{opId, deltaBase, family,
+// inFlight}>. Une LISTE et non une valeur unique : deux consommations concurrentes du même ingrédient (deux
+// "Terminé" rapprochés) doivent rester des opérations distinctes, chacune identifiée par un opId unique et
+// invariable, pour qu'un push ne puisse jamais supprimer par erreur le delta d'un autre push encore en vol
+// (bug de concurrence corrigé le 26/08/2026 ter — voir pushFridgeToInventoryItems). deltaBase est négatif
+// pour une consommation, exprimé dans l'unité de base de la famille (g/mL/pièce). inFlight=true signifie
+// qu'un push a déjà réclamé cette opération précise et attend la réponse de la RPC ; un opId n'est retiré
+// du tableau qu'après confirmation de succès de LA RPC QUI L'A RÉCLAMÉ, jamais par un autre push.
+// opId = crypto.randomUUID(), transmis tel quel à la RPC (p_operation_id) qui l'enregistre dans un ledger
+// serveur dédié pour garantir l'idempotence réseau (26/08/2026 quater) : un même opId rejoué après une
+// réponse réseau perdue n'applique jamais deux fois le delta côté cloud.
+//
+// Persistance de pendingInventoryDeltas (26/08/2026 quater) : sans elle, un reload pendant qu'une
+// consommation est encore en attente de confirmation RPC ferait perdre l'opId — le prochain retry en
+// génèrerait un nouveau, incompatible avec l'idempotence serveur (qui ne reconnaît que l'opId d'origine).
+// inFlight n'est JAMAIS persisté : il ne décrit qu'un état "requête en cours" propre à l'onglet ouvert,
+// qui n'a plus aucun sens après un reload — restauré à false pour chaque opération relue.
+function loadPendingInventoryOps(){
+  let raw;
+  try { raw = JSON.parse(localStorage.getItem("foodme_pending_inventory_ops") || "{}"); }
+  catch(e) { raw = {}; }
+  const map = new Map();
+  Object.keys(raw).forEach(id => {
+    const ops = (raw[id] || []).map(op => ({ opId: op.opId, deltaBase: op.deltaBase, family: op.family, inFlight: false }));
+    if (ops.length) map.set(id, ops);
+  });
+  return map;
+}
+function savePendingInventoryOps(){
+  const raw = {};
+  pendingInventoryDeltas.forEach((ops, id) => {
+    raw[id] = ops.map(op => ({ opId: op.opId, deltaBase: op.deltaBase, family: op.family })); // jamais inFlight
+  });
+  localStorage.setItem("foodme_pending_inventory_ops", JSON.stringify(raw));
+}
+let pendingInventoryDeltas = loadPendingInventoryOps();
 // Référentiel ingrédients (périssabilité, durée de conservation par défaut) : mis en cache localement,
 // récupéré une fois par session pour éviter un aller-retour réseau à chaque calcul de confiance.
 let ingredientMetaCache = null;
@@ -1523,14 +1565,27 @@ async function pullFromCloudAndMerge(){
       const quantities = {}, expiry = {}, meta = {};
       items.forEach(it => {
         selected.add(it.ingredient_id);
-        if (it.quantity != null && it.unit) quantities[it.ingredient_id] = { amount: Number(it.quantity), unit: it.unit };
+        const qty = (it.quantity != null && it.unit) ? { amount: Number(it.quantity), unit: it.unit } : null;
+        if (qty) quantities[it.ingredient_id] = qty;
         if (it.expiry_date) expiry[it.ingredient_id] = it.expiry_date;
-        meta[it.ingredient_id] = { addedAt: it.added_at || null, lastVerifiedAt: it.last_verified_at || null };
+        // syncedQuantity/syncedUpdatedAt : ce que cet appareil connaît désormais du cloud pour cet
+        // ingrédient — sert de référence pour détecter un conflit au prochain push (26/08/2026).
+        meta[it.ingredient_id] = { addedAt: it.added_at || null, lastVerifiedAt: it.last_verified_at || null, syncedQuantity: qty, syncedUpdatedAt: it.updated_at || null };
       });
       saveFridgeQuantities(quantities);
       saveExpiryDates(expiry);
       saveFridgeMeta(meta);
       dirtyIngredients.clear();
+      explicitReplaceIngredients.clear();
+      // pendingInventoryDeltas n'est PAS vidée ici (26/08/2026 ter) : un delta encore en attente à cet
+      // instant n'a jamais été confirmé comme écrit dans le cloud (les opérations confirmées sont déjà
+      // retirées par pushFridgeToInventoryItems dès leur succès) — le vider ferait perdre silencieusement
+      // une consommation réelle si un rechargement/reconnexion survient avant sa prochaine tentative
+      // d'envoi. Elle sera retentée automatiquement au prochain push (voir le filtre toVerify), avec le
+      // MÊME opId (persisté, voir loadPendingInventoryOps/savePendingInventoryOps) — depuis l'ajout du
+      // ledger d'idempotence serveur (26/08/2026 quater, RPC increment_inventory_quantity), ce retry ne
+      // peut plus jamais appliquer deux fois un delta déjà réussi côté cloud : la RPC reconnaît l'opId et
+      // renvoie un succès idempotent sans réécrire la quantité.
       loadIngredientMetaCache();
       saveCookedDishes(data.cooked_dishes || []);
       saveLeftovers(data.leftovers || []);
@@ -1542,6 +1597,11 @@ async function pullFromCloudAndMerge(){
       // Filet de sécurité : garantit que les recettes perso de cet appareil sont bien dans la table
       // partagée (utile pour les recettes créées avant l'ajout de cette synchronisation).
       (data.custom_recipes || []).forEach(syncCustomRecipeToCloud);
+      // Retente promptement une consommation encore en attente plutôt que d'attendre la prochaine action
+      // utilisateur (26/08/2026 quater) — sûr désormais grâce à l'idempotence serveur ci-dessus. Fire-and-
+      // forget comme le reste des synchronisations ; forceCloudSync()/pushToCloud()/pushFridgeToInventoryItems()
+      // n'appellent jamais pullFromCloudAndMerge(), donc aucune boucle pull → sync → pull n'est possible ici.
+      if (pendingInventoryDeltas.size > 0) forceCloudSync();
     } else {
       // Première connexion sur ce compte (aucune donnée sauvegardée pour l'instant) :
       // on envoie ce qui existe déjà en local sur cet appareil, et on ouvre le frigo plutôt que Communauté
@@ -1582,13 +1642,20 @@ async function pushFridgeToInventoryItems(){
   const expiry = loadExpiryDates();
   const fridgeMeta = loadFridgeMeta();
   const currentValues = Array.from(selected);
+  // Correction race concurrente fridgeMeta (26/08/2026 quinquies) : ce push ne connaît, à sa toute fin,
+  // que les clés qu'il a LUI-MÊME modifiées ou supprimées (jamais un snapshot global figé au chargement
+  // ci-dessus) — un pull ou un autre push concurrent peut ajouter/modifier d'autres clés entre-temps, elles
+  // ne doivent jamais être perdues. Voir la sauvegarde en fin de fonction (remplace l'ancien
+  // saveFridgeMeta(fridgeMeta) qui écrasait tout localStorage avec cette copie potentiellement périmée).
+  const touchedFridgeMetaIds = new Set();
+  const deletedFridgeMetaIds = new Set();
 
   // Aliments retirés du frigo depuis la dernière synchro : à supprimer côté cloud.
   const known = Object.keys(fridgeMeta);
   const removed = known.filter(id => !selected.has(id));
   if (removed.length) {
     await sb.from("inventory_items").delete().eq("owner_id", currentUser.id).in("ingredient_id", removed);
-    removed.forEach(id => delete fridgeMeta[id]);
+    removed.forEach(id => { delete fridgeMeta[id]; deletedFridgeMetaIds.add(id); });
   }
 
   // Un aliment est "nouveau" pour le cloud s'il n'a jamais été vu (pas d'historique local) — dans ce cas
@@ -1596,25 +1663,203 @@ async function pushFridgeToInventoryItems(){
   // et sa date de vérification à maintenant. Les autres ne sont PAS touchés : c'est ce qui permet à leur
   // confiance de décroître naturellement dans le temps, sans être effacée par chaque synchro automatique.
   const now = new Date().toISOString();
-  const toVerify = currentValues.filter(id => dirtyIngredients.has(id) || !fridgeMeta[id]);
+  // pendingInventoryDeltas.has(id) : garde cet id dans toVerify même si dirtyIngredients a déjà été vidé
+  // par un push précédent — indispensable pour retenter une consommation dont la RPC a échoué (26/08/2026).
+  const toVerify = currentValues.filter(id => dirtyIngredients.has(id) || !fridgeMeta[id] || pendingInventoryDeltas.has(id));
   if (toVerify.length) {
-    const rows = toVerify.map(value => ({
-      owner_id: currentUser.id,
-      ingredient_id: value,
-      quantity: quantities[value] ? quantities[value].amount : null,
-      unit: quantities[value] ? quantities[value].unit : null,
-      expiry_date: expiry[value] || null,
-      confidence: 1.0,
-      source: "manual",
-      last_verified_at: now,
-      updated_at: now
-    }));
-    const { error } = await sb.from("inventory_items").upsert(rows, { onConflict: "owner_id,ingredient_id" });
-    if (error) throw error;
-    toVerify.forEach(id => { fridgeMeta[id] = { addedAt: fridgeMeta[id] ? fridgeMeta[id].addedAt : now, lastVerifiedAt: now }; });
+    // Correction conflit multi-appareils (26/08/2026) : on ne réécrit plus la quantité à l'aveugle.
+    // Quatre cas :
+    //  - "fresh" : jamais connu localement -> aucune ligne cloud ne peut exister, écriture directe.
+    //  - "delta" : consommation dont le delta est réellement connu (transmis par finishRecipe via
+    //    pendingInventoryDeltas) -> RPC atomique dédiée, jamais d'upsert absolu pour ces ids (voir plus bas).
+    //  - "metaOnly" : la quantité locale n'a PAS changé depuis la dernière synchro connue (seule la
+    //    DLC ou la vérification a bougé) -> on ne touche jamais la quantité, pour ne jamais re-confirmer
+    //    à tort une valeur peut-être déjà périmée par un autre appareil.
+    //  - "quantityDirty" : la quantité locale a changé (saisie manuelle) -> on vérifie d'abord l'état
+    //    cloud actuel avant d'écrire (voir plus bas) ; jamais fusionnée en delta.
+    const freshIds = [], deltaIds = [], metaOnlyIds = [], quantityDirtyIds = [];
+    toVerify.forEach(id => {
+      const meta = fridgeMeta[id];
+      // Vérifié AVANT "!meta" (26/08/2026 ter) : depuis que pullFromCloudAndMerge ne vide plus
+      // pendingInventoryDeltas, un id avec un delta encore en attente peut se retrouver sans fridgeMeta
+      // (ex. l'ingrédient a disparu du cloud entre-temps) — il doit quand même passer par la RPC, jamais
+      // par un upsert absolu qui écraserait la ligne cloud avec une simple estimation locale.
+      if (pendingInventoryDeltas.has(id)) { deltaIds.push(id); return; }
+      if (!meta) { freshIds.push(id); return; } // aucune ligne cloud ne peut encore exister : la RPC échouerait, écriture directe
+      const localQty = quantities[id] || null;
+      const synced = meta.syncedQuantity;
+      // synced === undefined : ancien fridgeMeta antérieur à cette correction, pas encore de référence
+      // connue -> traité comme "pas de conflit détectable", exactement le comportement d'avant, le temps
+      // qu'une référence s'établisse au prochain push.
+      const qtyChangedLocally = synced !== undefined && JSON.stringify(localQty) !== JSON.stringify(synced || null);
+      if (qtyChangedLocally) quantityDirtyIds.push(id); else metaOnlyIds.push(id);
+    });
+
+    // --- Consommation à delta connu : RPC atomique, jamais d'UPSERT absolu pour ces ids ---
+    // Correction du bug de concurrence (26/08/2026 ter) : chaque push ne "réclame" (inFlight=true) que
+    // les opérations pas déjà en vol dans un autre push, de façon synchrone avant tout await — aucun
+    // autre push concurrent ne peut donc réclamer les mêmes opérations entre-temps. Au succès, seule CETTE
+    // opération précise (identifiée par opId) est retirée de la liste ; une opération ajoutée par un
+    // finishRecipe() survenu pendant l'attente de la RPC n'est jamais touchée. À l'échec, elle redevient
+    // simplement disponible (inFlight=false) pour la prochaine tentative — jamais retirée.
+    // Un appel RPC PAR opId (26/08/2026 quater), plus de somme : chaque opId doit être transmis
+    // individuellement à la RPC pour que le ledger d'idempotence serveur l'enregistre séparément — sommer
+    // plusieurs opérations en un seul appel empêcherait le serveur de les reconnaître individuellement lors
+    // d'un retry partiel.
+    for (const id of deltaIds) {
+      const allOps = pendingInventoryDeltas.get(id) || [];
+      const claimed = allOps.filter(op => !op.inFlight);
+      if (!claimed.length) continue; // toutes les opérations en attente pour cet id sont déjà réclamées par un autre push en cours
+      claimed.forEach(op => { op.inFlight = true; });
+      for (const op of claimed) {
+        try {
+          const { data, error } = await sb.rpc("increment_inventory_quantity", {
+            p_ingredient_id: id, p_delta_base: op.deltaBase, p_family: op.family, p_operation_id: op.opId, p_source: "recipe_consumption"
+          });
+          if (error) throw error;
+          const row = Array.isArray(data) ? data[0] : data;
+          // Ne retire que CETTE opération précise (par opId) — jamais celles ajoutées par un autre
+          // finishRecipe() pendant l'attente ci-dessus, ni celles réclamées par un push concurrent.
+          const remainingOps = (pendingInventoryDeltas.get(id) || []).filter(o => o.opId !== op.opId);
+          if (remainingOps.length) pendingInventoryDeltas.set(id, remainingOps); else pendingInventoryDeltas.delete(id);
+          savePendingInventoryOps();
+          const meta = fridgeMeta[id] || {};
+          const newQty = row && row.new_quantity != null ? { amount: Number(row.new_quantity), unit: row.new_unit } : null;
+          fridgeMeta[id] = { addedAt: meta.addedAt || now, lastVerifiedAt: now, syncedQuantity: newQty, syncedUpdatedAt: now };
+          touchedFridgeMetaIds.add(id);
+          if (newQty) {
+            // Aligne le stockage local sur la valeur que le cloud vient de confirmer pour CETTE opération
+            // (peut différer de l'estimation locale si un autre appareil a aussi consommé entre-temps) — ce
+            // n'est pas une valeur devinée, c'est le résultat réel renvoyé par la RPC atomique.
+            const alignedQuantities = loadFridgeQuantities();
+            alignedQuantities[id] = newQty;
+            saveFridgeQuantities(alignedQuantities);
+          }
+        } catch (e) {
+          // Échec réseau ou applicatif (ligne absente, incompatibilité de famille, OPERATION_ID_MISMATCH...) :
+          // on NE supprime PAS cette opération, on ne bascule PAS vers un upsert absolu (perte silencieuse ou
+          // double écriture) — elle redevient simplement disponible (inFlight=false) pour la prochaine
+          // tentative, avec le MÊME opId (jamais régénéré). L'idempotence serveur (ledger dédié, 26/08/2026
+          // quater) garantit qu'un retry avec cet opId n'appliquera jamais deux fois ce delta.
+          op.inFlight = false;
+          savePendingInventoryOps();
+          console.warn(`Consommation non synchronisée pour "${id}" (opId ${op.opId}, delta ${op.deltaBase} ${op.family}) : nouvelle tentative au prochain sync.`, e);
+        }
+      }
+    }
+
+    // --- Nouveaux ingrédients : écriture directe, aucun conflit possible ---
+    if (freshIds.length) {
+      const rows = freshIds.map(value => ({
+        owner_id: currentUser.id, ingredient_id: value,
+        quantity: quantities[value] ? quantities[value].amount : null,
+        unit: quantities[value] ? quantities[value].unit : null,
+        expiry_date: expiry[value] || null,
+        confidence: 1.0, source: "manual", last_verified_at: now, updated_at: now
+      }));
+      const { error } = await sb.from("inventory_items").upsert(rows, { onConflict: "owner_id,ingredient_id" });
+      if (error) throw error;
+      freshIds.forEach(id => {
+        fridgeMeta[id] = { addedAt: now, lastVerifiedAt: now, syncedQuantity: quantities[id] || null, syncedUpdatedAt: now };
+        touchedFridgeMetaIds.add(id);
+      });
+    }
+
+    // --- DLC/vérification seules : mise à jour ciblée qui ne touche jamais la quantité ---
+    for (const id of metaOnlyIds) {
+      const { error } = await sb.from("inventory_items")
+        .update({ expiry_date: expiry[id] || null, confidence: 1.0, source: "manual", last_verified_at: now, updated_at: now })
+        .eq("owner_id", currentUser.id).eq("ingredient_id", id);
+      if (error) throw error;
+      const meta = fridgeMeta[id];
+      fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: now, syncedQuantity: meta.syncedQuantity, syncedUpdatedAt: meta.syncedUpdatedAt };
+      touchedFridgeMetaIds.add(id);
+    }
+
+    // --- Quantité modifiée localement : on vérifie l'état cloud actuel avant d'écrire ---
+    if (quantityDirtyIds.length) {
+      const { data: cloudRows, error: selError } = await sb.from("inventory_items")
+        .select("ingredient_id, quantity, unit, updated_at")
+        .eq("owner_id", currentUser.id).in("ingredient_id", quantityDirtyIds);
+      if (selError) throw selError;
+      const cloudById = {};
+      (cloudRows || []).forEach(r => { cloudById[r.ingredient_id] = r; });
+
+      for (const id of quantityDirtyIds) {
+        const meta = fridgeMeta[id];
+        const synced = meta.syncedQuantity || null;
+        const cloud = cloudById[id];
+        const cloudQty = cloud ? { amount: cloud.quantity != null ? Number(cloud.quantity) : null, unit: cloud.unit || null } : null;
+        const localQty = quantities[id] || null;
+        const noConflict = !cloud || JSON.stringify(cloudQty) === JSON.stringify(synced);
+
+        if (noConflict) {
+          // Rien n'a changé côté cloud depuis la dernière synchro connue de cet appareil : la valeur
+          // locale peut être écrite telle quelle (comportement identique à avant cette correction).
+          const { error } = await sb.from("inventory_items")
+            .upsert({
+              owner_id: currentUser.id, ingredient_id: id,
+              quantity: localQty ? localQty.amount : null, unit: localQty ? localQty.unit : null,
+              expiry_date: expiry[id] || null, confidence: 1.0, source: "manual",
+              last_verified_at: now, updated_at: now
+            }, { onConflict: "owner_id,ingredient_id" });
+          if (error) throw error;
+          fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: now, syncedQuantity: localQty, syncedUpdatedAt: now };
+          touchedFridgeMetaIds.add(id);
+          continue;
+        }
+
+        // Conflit réel : un autre appareil a modifié cette quantité depuis la dernière synchro connue.
+        const canMergeDelta = !explicitReplaceIngredients.has(id) && localQty && synced && cloudQty
+          && localQty.unit === synced.unit && cloudQty.unit === synced.unit;
+        if (canMergeDelta) {
+          // Variation dont on sait avec certitude qu'elle vient d'une consommation confirmée par une
+          // recette (jamais d'une modification manuelle explicite) : fusion sûre par delta net de cet
+          // appareil depuis sa dernière synchro connue -> valeur cloud + (locale - dernière connue).
+          const delta = localQty.amount - synced.amount;
+          const merged = { amount: Math.max(0, cloudQty.amount + delta), unit: cloudQty.unit };
+          const { error } = await sb.from("inventory_items")
+            .upsert({
+              owner_id: currentUser.id, ingredient_id: id,
+              quantity: merged.amount, unit: merged.unit,
+              expiry_date: expiry[id] || null, confidence: 1.0, source: "manual",
+              last_verified_at: now, updated_at: now
+            }, { onConflict: "owner_id,ingredient_id" });
+          if (error) throw error;
+          const mergedQuantities = loadFridgeQuantities();
+          mergedQuantities[id] = merged;
+          saveFridgeQuantities(mergedQuantities);
+          fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: now, syncedQuantity: merged, syncedUpdatedAt: now };
+          touchedFridgeMetaIds.add(id);
+        } else {
+          // Modification manuelle explicite en conflit, ou fusion par delta impossible (unités
+          // différentes...) : on refuse d'écraser, on adopte la valeur cloud actuelle (plus récente) au
+          // lieu de deviner. La modification locale en attente n'est pas appliquée à ce cycle de synchro.
+          console.warn(`Conflit de synchronisation sur "${id}" : quantité cloud plus récente adoptée, la modification locale en attente n'a pas été appliquée.`);
+          const adoptedQuantities = loadFridgeQuantities();
+          if (cloudQty) adoptedQuantities[id] = cloudQty; else delete adoptedQuantities[id];
+          saveFridgeQuantities(adoptedQuantities);
+          fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: meta.lastVerifiedAt, syncedQuantity: cloudQty, syncedUpdatedAt: cloud.updated_at || now };
+          touchedFridgeMetaIds.add(id);
+        }
+      }
+    }
+
     dirtyIngredients.clear();
+    explicitReplaceIngredients.clear();
   }
-  saveFridgeMeta(fridgeMeta);
+  // Sauvegarde ciblée (26/08/2026 quinquies) : ne réécrit QUE les clés que CE push a lui-même modifiées ou
+  // supprimées, sur la copie la plus fraîche possible de fridgeMeta (relue juste avant d'écrire) — jamais
+  // le snapshot chargé en tête de fonction, qui peut être périmé après plusieurs await si un pull ou un
+  // autre push concurrent a entre-temps ajouté/modifié d'autres clés. Ces clés étrangères à ce push ne sont
+  // donc plus jamais écrasées ni perdues. Si ce push n'a rien touché, aucune écriture (comportement
+  // fonctionnel identique, sans le cycle de lecture/écriture inutile de l'ancien code).
+  if (touchedFridgeMetaIds.size || deletedFridgeMetaIds.size) {
+    const freshFridgeMeta = loadFridgeMeta();
+    touchedFridgeMetaIds.forEach(id => { freshFridgeMeta[id] = fridgeMeta[id]; });
+    deletedFridgeMetaIds.forEach(id => { delete freshFridgeMeta[id]; });
+    saveFridgeMeta(freshFridgeMeta);
+  }
 }
 async function pushToCloud(){
   if (!sb || !currentUser) return;
@@ -3101,6 +3346,10 @@ function setFridgeQuantity(value, amount, unit){
   else delete q[value];
   saveFridgeQuantities(q);
   dirtyIngredients.add(value);
+  // Marque explicitement : cette quantité vient d'une saisie manuelle (remplacement assumé de la
+  // valeur), jamais d'une consommation calculée — ne doit donc jamais être fusionnée par delta en cas
+  // de conflit multi-appareils (26/08/2026, voir pushFridgeToInventoryItems).
+  explicitReplaceIngredients.add(value);
   scheduleCloudSync();
 }
 // Convertit une quantité vers une unité de base par famille (g pour la masse, mL pour le volume,
@@ -3176,6 +3425,17 @@ function computeFeasibility(ingredients, servings, referenceServings){
   return { status, missing, shortages, quantifiedCount, totalRelevant: relevant.length };
 }
 const FEASIBILITY_ICON = { green: "🟢", orange: "🟠", red: "🔴" };
+// Texte du badge de faisabilité pour les cartes de résultats de l'écran "Cuisiner" (correctif 25/08/2026) :
+// distingue explicitement "ingrédient totalement absent" (missing) de "présent mais quantité insuffisante"
+// (shortages), pour ne jamais afficher "Il te manque 0 ingrédient" quand seule une quantité est insuffisante.
+function cardFeasibilityText(feasibility){
+  const { missing, shortages, status } = feasibility;
+  if (status === "green") return "🟢 Faisable avec ce que tu as";
+  const icon = FEASIBILITY_ICON[status];
+  if (missing.length === 0 && shortages.length > 0) return `${icon} Quantité insuffisante`;
+  if (missing.length > 0 && shortages.length === 0) return `${icon} Il te manque ${missing.length} ingrédient${missing.length > 1 ? "s" : ""}`;
+  return `${icon} Il te manque ${missing.length} ingrédient${missing.length > 1 ? "s" : ""} et certaines quantités sont insuffisantes`;
+}
 // Texte court pour les cartes de résultats / fiches recette, cohérent quel que soit le type de recette.
 function feasibilityText(f){
   if (f.status === "green") return "🟢 Tu as tout ce qu'il faut";
@@ -3644,6 +3904,13 @@ function detectTimer(stepText){
 
 // ---- Ajusteur de portions : recalcule les quantités affichées (TheMealDB ne donne pas de nombre de personnes, base 4) ----
 const BASE_SERVINGS = 2;
+// Valide une valeur `servings` lue depuis `custom_recipes.servings` (colonne nullable, ajoutée le 25/08/2026
+// pour transporter le nombre de personnes des recettes perso partagées) : entier strictement positif → la
+// valeur elle-même ; NULL, 0, ou toute valeur invalide → null, pour que le `|| BASE_SERVINGS` déjà utilisé
+// partout ailleurs continue de s'appliquer normalement (jamais d'écriture ni d'invention d'une valeur ici).
+function validServingsOrNull(value){
+  return (Number.isInteger(value) && value > 0) ? value : null;
+}
 function parseQty(measure){
   const m = measure.match(/^(\d+)\s+(\d+)\/(\d+)|^(\d+)\/(\d+)|^(\d+(?:\.\d+)?)/);
   if (!m) return null;
@@ -3974,9 +4241,7 @@ function renderRecipeResults(){
             ${!r.titleComplete ? `<span class="badge">⚠️ non traduit</span>` : ""}
           </div>
           <div class="match ${r.feasibility.status === 'green' ? 'ok' : r.feasibility.status === 'red' ? 'bad' : ''}">
-            ${r.feasibility.status === 'green'
-              ? "🟢 Faisable avec ce que tu as"
-              : `${FEASIBILITY_ICON[r.feasibility.status]} Il te manque ${r.missing.length} ingrédient${r.missing.length > 1 ? "s" : ""}${r.missing.length > 0 ? " : " + r.missing.slice(0, 3).map(m => translateIngredient(m.name)).join(", ") + (r.missing.length > 3 ? "…" : "") : ""}`}
+            ${cardFeasibilityText(r.feasibility)}
           </div>
         </div>
       </div>
@@ -4014,7 +4279,7 @@ function renderRecipeResults(){
       const card = btn.closest(".recipe-card");
       const r = sorted.find(x => String(x.recipe.id) === String(card.dataset.id));
       if (!r) return;
-      const added = toggleWeekRecipe(r.recipe.id, r.titleFr, r.recipe.image, BASE_SERVINGS);
+      const added = toggleWeekRecipe(r.recipe.id, r.titleFr, r.recipe.image, r.servings || BASE_SERVINGS);
       btn.classList.toggle("added", added);
     });
   });
@@ -4032,7 +4297,13 @@ async function fetchCommunityCustomResults(ingredients, titleQuery){
     if (error || !data) return [];
     return data.map(row => {
       const recipeIngredients = row.ingredients || [];
-      const feasibility = computeFeasibility(recipeIngredients, BASE_SERVINGS);
+      // Nombre de personnes réel de la recette (colonne `servings`, ajoutée le 25/08/2026) quand connu et
+      // valide, sinon repli sur BASE_SERVINGS — jamais de fausse alerte de faisabilité calculée sur la
+      // mauvaise base pour une recette partagée par quelqu'un d'autre (ou par soi-même, cf. RLS "ses propres
+      // recettes"). servings = referenceServings ici : la carte montre la faisabilité "telle qu'écrite" par
+      // l'auteur, sans mise à l'échelle (même convention que la fiche recette perso).
+      const servings = validServingsOrNull(row.servings) || BASE_SERVINGS;
+      const feasibility = computeFeasibility(recipeIngredients, servings, servings);
       return {
         // category reprend le type de plat de la recette perso (ex: "Dessert") — permet de réutiliser
         // le même filtre "Pâtisserie" que pour les recettes du catalogue TheMealDB (DIET_FILTERS.patisserie).
@@ -4042,6 +4313,7 @@ async function fetchCommunityCustomResults(ingredients, titleQuery){
         totalMinutes: row.total_minutes || null,
         missing: feasibility.missing,
         feasibility,
+        servings,
         totalIngredients: recipeIngredients.length,
         soonestExpiryDays: null,
         titleComplete: true,
@@ -4331,8 +4603,16 @@ function loadCookedDishes(){
   catch(e) { return []; }
 }
 function saveCookedDishes(list){
-  localStorage.setItem("foodme_cooked", JSON.stringify(list));
+  // Même pattern que saveCustomRecipes (protection stockage plein, 19/08/2026) : la donnée peut contenir
+  // des photos en base64, donc exposée au même risque de quota localStorage plein.
+  try {
+    localStorage.setItem("foodme_cooked", JSON.stringify(list));
+  } catch (e) {
+    console.error("Sauvegarde de l'historique des plats cuisinés :", e);
+    return false;
+  }
   scheduleCloudSync();
+  return true;
 }
 
 // ---- Restes (portions cuisinées gardées pour plus tard) ----
@@ -4344,12 +4624,20 @@ function loadLeftovers(){
   catch(e) { return []; }
 }
 function saveLeftovers(list){
-  localStorage.setItem("foodme_leftovers", JSON.stringify(list));
+  // Même pattern que saveCustomRecipes (protection stockage plein, 19/08/2026) : la donnée peut contenir
+  // des photos en base64, donc exposée au même risque de quota localStorage plein.
+  try {
+    localStorage.setItem("foodme_leftovers", JSON.stringify(list));
+  } catch (e) {
+    console.error("Sauvegarde des restes :", e);
+    return false;
+  }
   scheduleCloudSync();
   renderLeftoversBanner();
+  return true;
 }
 function addLeftover(recipe, portions, photo){
-  if (!portions || portions <= 0) return;
+  if (!portions || portions <= 0) return true; // rien à enregistrer, ce n'est pas un échec de sauvegarde
   const list = loadLeftovers();
   const cookedAt = new Date();
   // Règle produit validée : un reste de plat maison se conserve 48h maximum à partir de l'heure réelle de
@@ -4362,7 +4650,7 @@ function addLeftover(recipe, portions, photo){
     recipeId: recipe.id, title: recipe.title, image: photo || recipe.image,
     portions, cookedAt: cookedAt.toISOString(), bestBefore: bestBefore.toISOString()
   });
-  saveLeftovers(list);
+  return saveLeftovers(list);
 }
 // Statut de conservation d'un reste, calculé à l'heure près depuis `cookedAt`/`bestBefore` (horodatages
 // complets), volontairement SANS passer par `daysUntil()` : cette dernière est conçue pour les dates
@@ -4848,7 +5136,7 @@ function addCookedDish(recipe, difficulty, photo){
     recipeId: recipe.id, title: recipe.title, image: recipe.image, photo: photo || null,
     date: new Date().toISOString(), difficulty, taste: null, wouldRemake: null
   });
-  saveCookedDishes(list);
+  return saveCookedDishes(list);
 }
 
 // ---- Bilan (statistiques personnelles) ----
@@ -5366,9 +5654,22 @@ function attachDoneFlow(recipe, servings){
       });
 
       document.getElementById("confirmDoneBtn").addEventListener("click", async (e) => {
-        addCookedDish(recipe, difficulty, capturedPhoto);
+        // Verrou anti-double-clic (25/08/2026) : tout premier geste synchrone du handler, avant toute
+        // mutation métier (frigo, consommation, reste) ou opération async (sync cloud, partage) — un
+        // second clic/tap rapproché est ignoré immédiatement, y compris sur le chemin normal (sans
+        // partage) qui n'était protégé nulle part jusqu'ici (seul le chemin "partage" désactivait déjà
+        // le bouton, mais plus loin, après ces mutations).
+        if (e.target.disabled) return;
+        e.target.disabled = true;
+        const cookedSaveOk = addCookedDish(recipe, difficulty, capturedPhoto);
         const leftoverAmount = cookedServings - eatenPortions;
-        if (leftoverAmount > 0 && keepLeftover) addLeftover(recipe, leftoverAmount, capturedPhoto);
+        const leftoverSaveOk = (leftoverAmount > 0 && keepLeftover) ? addLeftover(recipe, leftoverAmount, capturedPhoto) : true;
+        // Stockage plein (même mécanisme que la création de recette perso, voir saveCustomRecipes) : on
+        // prévient sans jamais bloquer la suite du parcours ni modifier les données métier pour "faire
+        // comme si" la sauvegarde avait réussi — le reste du parcours (frigo, restes, écran de succès) continue normalement.
+        if (cookedSaveOk === false || leftoverSaveOk === false) {
+          showToast("Le stockage de ton téléphone est plein — libère de la place. Cette cuisson n'a peut-être pas été entièrement enregistrée dans ton historique.");
+        }
         // Uniquement pour informer l'utilisateur sur l'écran de succès (voir finishRecipe) — n'intervient
         // dans aucun calcul de consommation, ne remplace ni ne duplique addLeftover ci-dessus.
         const leftoverInfo = { remaining: leftoverAmount, kept: keepLeftover, eaten: eatenPortions };
@@ -5536,10 +5837,24 @@ function finishRecipe(usedUpValues, consumptionMap, shareResult, leftoverInfo){
     const quantities = loadFridgeQuantities();
     Object.keys(consumptionMap).forEach(v => {
       if (usedUpValues.includes(v)) return; // déjà entièrement retiré du frigo, rien à décrémenter en plus
-      const { remaining } = consumptionMap[v];
+      const { remaining, consumed } = consumptionMap[v];
       if (remaining) quantities[v] = { amount: remaining.amount, unit: remaining.unit };
       else delete quantities[v]; // estimation à ~0 mais l'ingrédient est gardé : on ne réaffirme pas une quantité qu'on ne connaît plus
       dirtyIngredients.add(v);
+      // Transport du delta réellement connu (26/08/2026) vers la synchronisation, pour un incrément cloud
+      // atomique via la RPC — jamais reconstruit a posteriori à partir de deux valeurs absolues. Ajouté à la
+      // LISTE des opérations en attente pour cet ingrédient (jamais un remplacement) : si une consommation
+      // précédente du même ingrédient est encore en vol, elle ne doit pas être écrasée (26/08/2026 ter).
+      // opId = crypto.randomUUID() (26/08/2026 quater) : identifiant stable transmis à la RPC pour son
+      // idempotence côté serveur — généré une seule fois ici, jamais régénéré lors d'un retry (le retry
+      // relit cette même opération dans pendingInventoryDeltas, il n'en crée jamais une nouvelle).
+      const consumedBase = consumed ? toBaseQuantity(consumed.amount, consumed.unit) : null;
+      if (consumedBase) {
+        const pendingOps = pendingInventoryDeltas.get(v) || [];
+        pendingOps.push({ opId: crypto.randomUUID(), deltaBase: -consumedBase.value, family: consumedBase.family, inFlight: false });
+        pendingInventoryDeltas.set(v, pendingOps);
+        savePendingInventoryOps();
+      }
     });
     saveFridgeQuantities(quantities);
   }
@@ -5715,6 +6030,7 @@ async function syncCustomRecipeToCloud(recipe){
       meal_type: recipe.mealType || null,
       temperature: recipe.temperature || null,
       equipment: recipe.equipment || [],
+      servings: recipe.servings ?? null,
       updated_at: new Date().toISOString()
     });
   } catch (e) { console.error("Sync recette perso :", e); }
@@ -6259,7 +6575,7 @@ function renderFeasibilityBoxHTML(feasibility, servings){
   } else {
     const parts = [];
     if (feasibility.missing.length > 0) parts.push(`il te manque ${feasibility.missing.map(m => translateIngredient(m.name)).join(", ")}`);
-    if (feasibility.shortages.length > 0) parts.push(`pas assez de ${feasibility.shortages.map(s => `${s.amount}${QUANTITY_UNITS[s.unit]} de ${translateIngredient(s.name)}`).join(", ")}`);
+    if (feasibility.shortages.length > 0) parts.push(`il te manque ${feasibility.shortages.map(s => `${s.amount}${QUANTITY_UNITS[s.unit]} de ${translateIngredient(s.name)}`).join(", ")}`);
     text = `${FEASIBILITY_ICON[feasibility.status]} ${cap(parts.join(" et "))}`;
   }
   return `
@@ -6316,7 +6632,8 @@ async function showCustomRecipeDetail(id, returnTo){
           totalMinutes: data.total_minutes,
           mealType: data.meal_type,
           temperature: data.temperature,
-          equipment: data.equipment || []
+          equipment: data.equipment || [],
+          servings: validServingsOrNull(data.servings)
         };
         authorId = data.user_id;
         authorName = (data.profiles && data.profiles.username) || null;
