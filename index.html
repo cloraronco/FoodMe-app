@@ -644,6 +644,26 @@
     width:100%;padding:15px;margin:22px 0 8px;border-radius:12px;border:none;
     background:var(--tomato);color:#fff;font-family:var(--font-body);font-weight:700;font-size:15px;cursor:pointer;
   }
+  /* ---- Écran "Qu'est-ce qu'on mange ?" (chantier UX P0, 27/08/2026) ---- */
+  .qm-hero{text-align:center;padding:14px 0 4px;}
+  .qm-hero h2{font-family:var(--font-display);font-weight:680;font-size:26px;margin:0;letter-spacing:-.01em;}
+  .qm-actions{display:flex;flex-direction:column;gap:10px;margin:18px 0;}
+  .qm-action-btn{
+    padding:15px;border:1.5px solid var(--line);border-radius:14px;background:var(--surface);
+    color:var(--ink);font-family:var(--font-body);font-weight:700;font-size:15.5px;cursor:pointer;text-align:left;
+  }
+  .qm-action-btn:active{background:var(--tomato-tint);border-color:var(--tomato);}
+  .qm-craving-form{display:flex;gap:8px;margin:0 0 18px;}
+  .qm-craving-form .search-input{flex:1;margin-bottom:0;}
+  .qm-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;text-align:center;}
+  .qm-card img{width:100%;height:180px;object-fit:cover;border-radius:12px;margin-bottom:12px;}
+  .qm-card h3{margin:0 0 8px;font-family:var(--font-display);font-size:20px;}
+  .qm-card .badges{justify-content:center;margin-bottom:10px;}
+  .qm-ingredients{list-style:none;padding:0;margin:0 0 14px;color:var(--ink-dim);font-size:13.5px;}
+  .qm-ingredients li{display:inline;}
+  .qm-ingredients li:not(:last-child)::after{content:" · ";}
+  .qm-card-actions{display:flex;gap:10px;margin-top:12px;align-items:center;}
+  .qm-card-actions .primary-btn{flex:1;margin:0;}
   #appSplash{
     position:fixed;inset:0;z-index:999;background:var(--bg);
     display:flex;align-items:center;justify-content:center;gap:14px;
@@ -1182,6 +1202,22 @@
   <button type="button" id="discoverCtaBtn" class="discover-cta">Se connecter ou créer un compte</button>
 </main>
 
+<!-- Écran d'entrée "Qu'est-ce qu'on mange ?" (chantier UX P0, 27/08/2026) : remplace le rôle de première
+     expérience de view-decouvrirapp (voir initAuth()/verrou de navigation) — fonctionne connecté ou non. -->
+<main id="view-quoimanger" class="view" hidden>
+  <div class="qm-hero"><h2>Qu'est-ce qu'on mange ?</h2></div>
+  <div class="qm-actions" id="qmActions">
+    <button type="button" class="qm-action-btn" id="qmSurpriseBtn">🎲 Surprends-moi</button>
+    <button type="button" class="qm-action-btn" id="qmFridgeBtn" hidden>🧊 Avec mon frigo</button>
+    <button type="button" class="qm-action-btn" id="qmCravingToggleBtn">😋 J'ai envie de…</button>
+  </div>
+  <form id="qmCravingForm" class="qm-craving-form" hidden novalidate>
+    <input type="text" id="qmCravingInput" class="search-input" placeholder="Pâtes, poulet, quelque chose de léger…" maxlength="60" autocomplete="off">
+    <button type="submit" class="primary-btn">Chercher</button>
+  </form>
+  <div id="qmResult"></div>
+</main>
+
 <main id="view-enregistrees" class="view" hidden>
   <button type="button" class="back-btn secondary-back-btn">← Retour</button>
   <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -1383,7 +1419,7 @@ setTimeout(hideSplash, 3000); // filet de sécurité si la connexion au serveur 
 async function initAuth(){
   // Première expérience, sans compte : on ouvre directement sur "Bienvenue sur Olymi" plutôt que sur
   // le formulaire de connexion, pour présenter l'application avant de demander à se connecter.
-  if (!sb) { renderAuthUI(); if (!currentUser) showDiscoverScreen(); hideSplash(); return; }
+  if (!sb) { renderAuthUI(); if (!currentUser) showWhatToEatScreen(); hideSplash(); return; }
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (session) await loadProfile(session.user);
@@ -1397,7 +1433,7 @@ async function initAuth(){
     else { currentUser = null; currentProfile = null; renderAuthUI(); }
   });
   renderAuthUI();
-  if (!currentUser) showDiscoverScreen();
+  if (!currentUser) showWhatToEatScreen();
   hideSplash();
 }
 
@@ -1650,6 +1686,34 @@ async function pushFridgeToInventoryItems(){
   const touchedFridgeMetaIds = new Set();
   const deletedFridgeMetaIds = new Set();
 
+  // Correction race concurrente dirtyIngredients/explicitReplaceIngredients (27/08/2026) : retrait
+  // ATOMIQUE (synchrone, avant tout await) des ids que CE push réclame — exactement le même principe que
+  // le claim par opId de pendingInventoryDeltas. Toute modification utilisateur survenant APRÈS ce point
+  // (setFridgeQuantity/setExpiryDate/markIngredientVerified/finishRecipe) fait un .add() sur un Set qui ne
+  // contient plus l'ancienne entrée de ce push : c'est un marqueur frais, entièrement indépendant, jamais
+  // écrasé ni perdu par la suite. Ce push ne "libère" jamais globalement ces Set en fin de fonction (les
+  // deux clear() inconditionnels ont été supprimés) : il ne rend un id que s'il échoue à le traiter (voir
+  // restoreClaim ci-dessous), symétrique à op.inFlight=false pour les deltas RPC.
+  const claimedIds = new Set();
+  const claimedExplicit = new Set();
+  currentValues.forEach(id => {
+    if (dirtyIngredients.has(id)) {
+      dirtyIngredients.delete(id);
+      claimedIds.add(id);
+      if (explicitReplaceIngredients.has(id)) {
+        explicitReplaceIngredients.delete(id);
+        claimedExplicit.add(id);
+      }
+    }
+  });
+  // Restitution par id (jamais globale) : à appeler uniquement pour un id que CE push a réclamé mais n'a
+  // pas réussi à synchroniser — le remet disponible pour la prochaine tentative, avec son statut explicite
+  // d'origine, sans jamais toucher aux ids réclamés par un autre push ou modifiés depuis.
+  const restoreClaim = (id) => {
+    dirtyIngredients.add(id);
+    if (claimedExplicit.has(id)) explicitReplaceIngredients.add(id);
+  };
+
   // Aliments retirés du frigo depuis la dernière synchro : à supprimer côté cloud.
   const known = Object.keys(fridgeMeta);
   const removed = known.filter(id => !selected.has(id));
@@ -1665,7 +1729,7 @@ async function pushFridgeToInventoryItems(){
   const now = new Date().toISOString();
   // pendingInventoryDeltas.has(id) : garde cet id dans toVerify même si dirtyIngredients a déjà été vidé
   // par un push précédent — indispensable pour retenter une consommation dont la RPC a échoué (26/08/2026).
-  const toVerify = currentValues.filter(id => dirtyIngredients.has(id) || !fridgeMeta[id] || pendingInventoryDeltas.has(id));
+  const toVerify = currentValues.filter(id => claimedIds.has(id) || !fridgeMeta[id] || pendingInventoryDeltas.has(id));
   if (toVerify.length) {
     // Correction conflit multi-appareils (26/08/2026) : on ne réécrit plus la quantité à l'aveugle.
     // Quatre cas :
@@ -1749,104 +1813,133 @@ async function pushFridgeToInventoryItems(){
     }
 
     // --- Nouveaux ingrédients : écriture directe, aucun conflit possible ---
+    // Restitution par lot (26/08/2026 quinquies bis) : un seul appel réseau pour tout freshIds — en cas
+    // d'échec, aucun de ces ids n'a été traité, ils sont donc TOUS rendus (jamais partiellement retirés
+    // des Set partagés), et le push continue sur metaOnlyIds/quantityDirtyIds plutôt que d'avorter.
     if (freshIds.length) {
-      const rows = freshIds.map(value => ({
-        owner_id: currentUser.id, ingredient_id: value,
-        quantity: quantities[value] ? quantities[value].amount : null,
-        unit: quantities[value] ? quantities[value].unit : null,
-        expiry_date: expiry[value] || null,
-        confidence: 1.0, source: "manual", last_verified_at: now, updated_at: now
-      }));
-      const { error } = await sb.from("inventory_items").upsert(rows, { onConflict: "owner_id,ingredient_id" });
-      if (error) throw error;
-      freshIds.forEach(id => {
-        fridgeMeta[id] = { addedAt: now, lastVerifiedAt: now, syncedQuantity: quantities[id] || null, syncedUpdatedAt: now };
-        touchedFridgeMetaIds.add(id);
-      });
+      try {
+        const rows = freshIds.map(value => ({
+          owner_id: currentUser.id, ingredient_id: value,
+          quantity: quantities[value] ? quantities[value].amount : null,
+          unit: quantities[value] ? quantities[value].unit : null,
+          expiry_date: expiry[value] || null,
+          confidence: 1.0, source: "manual", last_verified_at: now, updated_at: now
+        }));
+        const { error } = await sb.from("inventory_items").upsert(rows, { onConflict: "owner_id,ingredient_id" });
+        if (error) throw error;
+        freshIds.forEach(id => {
+          fridgeMeta[id] = { addedAt: now, lastVerifiedAt: now, syncedQuantity: quantities[id] || null, syncedUpdatedAt: now };
+          touchedFridgeMetaIds.add(id);
+        });
+      } catch (e) {
+        freshIds.forEach(restoreClaim);
+        console.warn(`Synchronisation des nouveaux aliments impossible (${freshIds.join(", ")}) : nouvelle tentative au prochain sync.`, e);
+      }
     }
 
     // --- DLC/vérification seules : mise à jour ciblée qui ne touche jamais la quantité ---
+    // Restitution par id : un échec sur un ingrédient ne doit ni perdre son marqueur, ni empêcher le
+    // traitement des ingrédients suivants de la même boucle.
     for (const id of metaOnlyIds) {
-      const { error } = await sb.from("inventory_items")
-        .update({ expiry_date: expiry[id] || null, confidence: 1.0, source: "manual", last_verified_at: now, updated_at: now })
-        .eq("owner_id", currentUser.id).eq("ingredient_id", id);
-      if (error) throw error;
-      const meta = fridgeMeta[id];
-      fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: now, syncedQuantity: meta.syncedQuantity, syncedUpdatedAt: meta.syncedUpdatedAt };
-      touchedFridgeMetaIds.add(id);
+      try {
+        const { error } = await sb.from("inventory_items")
+          .update({ expiry_date: expiry[id] || null, confidence: 1.0, source: "manual", last_verified_at: now, updated_at: now })
+          .eq("owner_id", currentUser.id).eq("ingredient_id", id);
+        if (error) throw error;
+        const meta = fridgeMeta[id];
+        fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: now, syncedQuantity: meta.syncedQuantity, syncedUpdatedAt: meta.syncedUpdatedAt };
+        touchedFridgeMetaIds.add(id);
+      } catch (e) {
+        restoreClaim(id);
+        console.warn(`Vérification non synchronisée pour "${id}" : nouvelle tentative au prochain sync.`, e);
+      }
     }
 
     // --- Quantité modifiée localement : on vérifie l'état cloud actuel avant d'écrire ---
     if (quantityDirtyIds.length) {
-      const { data: cloudRows, error: selError } = await sb.from("inventory_items")
-        .select("ingredient_id, quantity, unit, updated_at")
-        .eq("owner_id", currentUser.id).in("ingredient_id", quantityDirtyIds);
-      if (selError) throw selError;
-      const cloudById = {};
-      (cloudRows || []).forEach(r => { cloudById[r.ingredient_id] = r; });
+      let cloudById = null;
+      try {
+        const { data: cloudRows, error: selError } = await sb.from("inventory_items")
+          .select("ingredient_id, quantity, unit, updated_at")
+          .eq("owner_id", currentUser.id).in("ingredient_id", quantityDirtyIds);
+        if (selError) throw selError;
+        cloudById = {};
+        (cloudRows || []).forEach(r => { cloudById[r.ingredient_id] = r; });
+      } catch (e) {
+        // La lecture préalable de l'état cloud a échoué pour TOUS ces ids : aucun n'a pu être traité,
+        // ils sont donc tous rendus, sans tenter la boucle ci-dessous.
+        quantityDirtyIds.forEach(restoreClaim);
+        console.warn(`Lecture cloud impossible pour les quantités modifiées (${quantityDirtyIds.join(", ")}) : nouvelle tentative au prochain sync.`, e);
+      }
 
-      for (const id of quantityDirtyIds) {
-        const meta = fridgeMeta[id];
-        const synced = meta.syncedQuantity || null;
-        const cloud = cloudById[id];
-        const cloudQty = cloud ? { amount: cloud.quantity != null ? Number(cloud.quantity) : null, unit: cloud.unit || null } : null;
-        const localQty = quantities[id] || null;
-        const noConflict = !cloud || JSON.stringify(cloudQty) === JSON.stringify(synced);
+      if (cloudById) {
+        for (const id of quantityDirtyIds) {
+          try {
+            const meta = fridgeMeta[id];
+            const synced = meta.syncedQuantity || null;
+            const cloud = cloudById[id];
+            const cloudQty = cloud ? { amount: cloud.quantity != null ? Number(cloud.quantity) : null, unit: cloud.unit || null } : null;
+            const localQty = quantities[id] || null;
+            const noConflict = !cloud || JSON.stringify(cloudQty) === JSON.stringify(synced);
 
-        if (noConflict) {
-          // Rien n'a changé côté cloud depuis la dernière synchro connue de cet appareil : la valeur
-          // locale peut être écrite telle quelle (comportement identique à avant cette correction).
-          const { error } = await sb.from("inventory_items")
-            .upsert({
-              owner_id: currentUser.id, ingredient_id: id,
-              quantity: localQty ? localQty.amount : null, unit: localQty ? localQty.unit : null,
-              expiry_date: expiry[id] || null, confidence: 1.0, source: "manual",
-              last_verified_at: now, updated_at: now
-            }, { onConflict: "owner_id,ingredient_id" });
-          if (error) throw error;
-          fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: now, syncedQuantity: localQty, syncedUpdatedAt: now };
-          touchedFridgeMetaIds.add(id);
-          continue;
-        }
+            if (noConflict) {
+              // Rien n'a changé côté cloud depuis la dernière synchro connue de cet appareil : la valeur
+              // locale peut être écrite telle quelle (comportement identique à avant cette correction).
+              const { error } = await sb.from("inventory_items")
+                .upsert({
+                  owner_id: currentUser.id, ingredient_id: id,
+                  quantity: localQty ? localQty.amount : null, unit: localQty ? localQty.unit : null,
+                  expiry_date: expiry[id] || null, confidence: 1.0, source: "manual",
+                  last_verified_at: now, updated_at: now
+                }, { onConflict: "owner_id,ingredient_id" });
+              if (error) throw error;
+              fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: now, syncedQuantity: localQty, syncedUpdatedAt: now };
+              touchedFridgeMetaIds.add(id);
+              continue;
+            }
 
-        // Conflit réel : un autre appareil a modifié cette quantité depuis la dernière synchro connue.
-        const canMergeDelta = !explicitReplaceIngredients.has(id) && localQty && synced && cloudQty
-          && localQty.unit === synced.unit && cloudQty.unit === synced.unit;
-        if (canMergeDelta) {
-          // Variation dont on sait avec certitude qu'elle vient d'une consommation confirmée par une
-          // recette (jamais d'une modification manuelle explicite) : fusion sûre par delta net de cet
-          // appareil depuis sa dernière synchro connue -> valeur cloud + (locale - dernière connue).
-          const delta = localQty.amount - synced.amount;
-          const merged = { amount: Math.max(0, cloudQty.amount + delta), unit: cloudQty.unit };
-          const { error } = await sb.from("inventory_items")
-            .upsert({
-              owner_id: currentUser.id, ingredient_id: id,
-              quantity: merged.amount, unit: merged.unit,
-              expiry_date: expiry[id] || null, confidence: 1.0, source: "manual",
-              last_verified_at: now, updated_at: now
-            }, { onConflict: "owner_id,ingredient_id" });
-          if (error) throw error;
-          const mergedQuantities = loadFridgeQuantities();
-          mergedQuantities[id] = merged;
-          saveFridgeQuantities(mergedQuantities);
-          fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: now, syncedQuantity: merged, syncedUpdatedAt: now };
-          touchedFridgeMetaIds.add(id);
-        } else {
-          // Modification manuelle explicite en conflit, ou fusion par delta impossible (unités
-          // différentes...) : on refuse d'écraser, on adopte la valeur cloud actuelle (plus récente) au
-          // lieu de deviner. La modification locale en attente n'est pas appliquée à ce cycle de synchro.
-          console.warn(`Conflit de synchronisation sur "${id}" : quantité cloud plus récente adoptée, la modification locale en attente n'a pas été appliquée.`);
-          const adoptedQuantities = loadFridgeQuantities();
-          if (cloudQty) adoptedQuantities[id] = cloudQty; else delete adoptedQuantities[id];
-          saveFridgeQuantities(adoptedQuantities);
-          fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: meta.lastVerifiedAt, syncedQuantity: cloudQty, syncedUpdatedAt: cloud.updated_at || now };
-          touchedFridgeMetaIds.add(id);
+            // Conflit réel : un autre appareil a modifié cette quantité depuis la dernière synchro connue.
+            // claimedExplicit (et non plus explicitReplaceIngredients, retiré au claim) : le statut
+            // "remplacement explicite" tel qu'il était AU MOMENT où ce push a réclamé cet id.
+            const canMergeDelta = !claimedExplicit.has(id) && localQty && synced && cloudQty
+              && localQty.unit === synced.unit && cloudQty.unit === synced.unit;
+            if (canMergeDelta) {
+              // Variation dont on sait avec certitude qu'elle vient d'une consommation confirmée par une
+              // recette (jamais d'une modification manuelle explicite) : fusion sûre par delta net de cet
+              // appareil depuis sa dernière synchro connue -> valeur cloud + (locale - dernière connue).
+              const delta = localQty.amount - synced.amount;
+              const merged = { amount: Math.max(0, cloudQty.amount + delta), unit: cloudQty.unit };
+              const { error } = await sb.from("inventory_items")
+                .upsert({
+                  owner_id: currentUser.id, ingredient_id: id,
+                  quantity: merged.amount, unit: merged.unit,
+                  expiry_date: expiry[id] || null, confidence: 1.0, source: "manual",
+                  last_verified_at: now, updated_at: now
+                }, { onConflict: "owner_id,ingredient_id" });
+              if (error) throw error;
+              const mergedQuantities = loadFridgeQuantities();
+              mergedQuantities[id] = merged;
+              saveFridgeQuantities(mergedQuantities);
+              fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: now, syncedQuantity: merged, syncedUpdatedAt: now };
+              touchedFridgeMetaIds.add(id);
+            } else {
+              // Modification manuelle explicite en conflit, ou fusion par delta impossible (unités
+              // différentes...) : on refuse d'écraser, on adopte la valeur cloud actuelle (plus récente) au
+              // lieu de deviner. La modification locale en attente n'est pas appliquée à ce cycle de synchro.
+              console.warn(`Conflit de synchronisation sur "${id}" : quantité cloud plus récente adoptée, la modification locale en attente n'a pas été appliquée.`);
+              const adoptedQuantities = loadFridgeQuantities();
+              if (cloudQty) adoptedQuantities[id] = cloudQty; else delete adoptedQuantities[id];
+              saveFridgeQuantities(adoptedQuantities);
+              fridgeMeta[id] = { addedAt: meta.addedAt, lastVerifiedAt: meta.lastVerifiedAt, syncedQuantity: cloudQty, syncedUpdatedAt: cloud.updated_at || now };
+              touchedFridgeMetaIds.add(id);
+            }
+          } catch (e) {
+            restoreClaim(id);
+            console.warn(`Quantité non synchronisée pour "${id}" : nouvelle tentative au prochain sync.`, e);
+          }
         }
       }
     }
-
-    dirtyIngredients.clear();
-    explicitReplaceIngredients.clear();
   }
   // Sauvegarde ciblée (26/08/2026 quinquies) : ne réécrit QUE les clés que CE push a lui-même modifiées ou
   // supprimées, sur la copie la plus fraîche possible de fridgeMeta (relue juste avant d'écrire) — jamais
@@ -4079,26 +4172,142 @@ function attachStepAccordion(container){
 
 const recipeCache = new Map(); // id -> recette au format interne (évite un re-fetch au clic)
 
-// ---- Adaptateur API : seul endroit qui connaît le format de TheMealDB ----
-// Si on change de fournisseur de recettes un jour, c'est la SEULE fonction à réécrire :
-// tout le reste de l'appli (recherche, tri, traduction, affichage) travaille sur ce format neutre.
+// ---- Adaptateur catalogue : seule fonction qui connaît le format de TheMealDB ----
+// Si on change/ajoute un fournisseur de recettes un jour, on écrit un adaptateur équivalent pour lui,
+// produisant la même forme de sortie : tout le reste de l'appli (recherche, tri, traduction, affichage,
+// FeasibilityEngine) travaille exclusivement sur ce format interne neutre, jamais sur les champs bruts
+// du fournisseur. Champ enrichi le 27/08/2026 (chantier "Qu'est-ce qu'on mange ?", catalogue) pour préparer
+// un futur fournisseur plus riche (100 000+ recettes) — aucune donnée absente chez TheMealDB n'est devinée :
+// elle reste null/vide, ou explicitement marquée "estimated"/"structured:false".
 function toInternalRecipe(meal){
   const ingredients = [];
   for (let i = 1; i <= 20; i++) {
     const ing = meal[`strIngredient${i}`];
     const measure = meal[`strMeasure${i}`];
-    if (ing && ing.trim()) ingredients.push({ name: ing.trim(), measure: (measure || "").trim() });
+    if (ing && ing.trim()) {
+      const measureText = (measure || "").trim();
+      ingredients.push({
+        name: ing.trim(),
+        amount: null,        // TheMealDB ne fournit pas de quantité structurée, seulement un texte libre
+        unit: null,
+        measureText,
+        measure: measureText, // conservé pour compatibilité (renderIngredientsHTML, scaleMeasure, etc. lisent `measure`)
+        structured: false
+      });
+    }
   }
-  return {
-    id: meal.idMeal,
+  const category = meal.strCategory || "";
+  // dietFlags : simple déduction depuis la catégorie TheMealDB (taxonomie propre à ce fournisseur), en plus
+  // de `category`/`area` qui restent la source de vérité pour les filtres existants (DIET_FILTERS, areaFilter,
+  // inchangés dans ce chantier) — dietFlags est additif, pour un futur fournisseur avec une vraie notion de régime.
+  const dietFlags = [];
+  if (category === "Vegetarian" || category === "Vegan") dietFlags.push("vegetarian");
+  if (category === "Vegan") dietFlags.push("vegan");
+
+  const recipe = {
+    id: meal.idMeal,           // conservé tel quel (non préfixé) : compatibilité avec les recettes déjà
+                                // sauvegardées (dossiers, semaine, recipe_cook_counts) — voir rapport, section 3
+    sourceProvider: "themealdb",
+    sourceId: meal.idMeal,
+
     title: meal.strMeal,
+    titleSource: "en",         // TheMealDB est anglophone ; le titre affiché est traduit à la volée ailleurs
     image: meal.strMealThumb,
-    area: meal.strArea || "",
-    category: meal.strCategory || "",
+
     ingredients,
-    instructions: (meal.strInstructions || "").trim()
+    // Reste une chaîne (pas un tableau) : compatibilité avec estimateTimes()/splitInstructionsIntoSteps(),
+    // qui la redécoupent à la demande — voir rapport, section 2.
+    instructions: (meal.strInstructions || "").trim(),
+
+    prepMinutes: null,         // jamais fourni par TheMealDB : calculé à la demande par estimateTimes(), jamais ici
+    totalMinutes: null,
+    timesEstimated: true,      // TheMealDB ne fournit aucun temps réel : tout temps affiché pour cette recette est une estimation
+
+    servings: null,            // TheMealDB ne fournit pas de nombre de personnes (BASE_SERVINGS reste le repli d'affichage)
+
+    category,
+    tags: (meal.strTags || "").split(",").map(t => t.trim()).filter(Boolean),
+    area: meal.strArea || "",
+
+    dietFlags,
+    allergens: null,           // n'existe pas chez TheMealDB — jamais deviné
+
+    difficulty: null,          // n'existe pas chez TheMealDB (le champ `difficulty` des recettes perso est une
+                                // appréciation saisie par l'utilisateur, pas une propriété du catalogue)
+
+    completeness: null
   };
+  recipe.completeness = computeRecipeCompleteness(recipe);
+  return recipe;
 }
+
+// ---- Complétude d'une recette au format interne : indicateur 0–1, purement informatif pour l'instant
+// (non affiché, non utilisé pour trier ou filtrer) — utile dès qu'un futur fournisseur plus riche coexistera
+// avec TheMealDB pour repérer les recettes les mieux renseignées. ----
+function computeRecipeCompleteness(recipe){
+  const checks = [
+    !!recipe.image,
+    !recipe.timesEstimated && !!recipe.prepMinutes,
+    !!recipe.servings,
+    recipe.ingredients.length > 0 && recipe.ingredients.every(i => i.structured),
+    recipe.tags && recipe.tags.length > 0,
+    !!(recipe.allergens && recipe.allergens.length > 0),
+    !!recipe.difficulty
+  ];
+  return Math.round((checks.filter(Boolean).length / checks.length) * 100) / 100;
+}
+
+// ---- Fournisseur de catalogue (aujourd'hui : TheMealDB) — seule couche autorisée à connaître ses endpoints.
+// Le moteur de recherche (searchRecipes, searchRecipeByName, searchRecipesByIntent) n'appelle jamais l'API
+// directement : il passe par recipeProvider, qui rend déjà des recettes au format interne (toInternalRecipe
+// appliqué ici, nulle part ailleurs dans la recherche). Remplacer TheMealDB par un autre fournisseur demain
+// consistera à réécrire cet objet (et toInternalRecipe), pas le moteur ni l'UI. ----
+const recipeProvider = {
+  id: "themealdb",
+  // Reproduit exactement le comportement historique de searchRecipes() : recoupement par ingrédient via
+  // filter.php, on ne garde que les meilleurs candidats par recoupement, détail récupéré via lookup.php.
+  async searchByIngredients(ingredientIds, { maxCandidates = 25 } = {}){
+    const rawResponses = await fetchJsonInBatches(ingredientIds.map(ing => `${API_BASE}filter.php?i=${ing}`));
+    const allFailed = rawResponses.every(data => !data);
+    if (allFailed) return { recipes: [], allFailed: true };
+    const overlapMap = new Map();
+    rawResponses.forEach(data => {
+      if (data && data.meals) {
+        data.meals.forEach(m => {
+          const cur = overlapMap.get(m.idMeal);
+          if (cur) cur.overlapCount++;
+          else overlapMap.set(m.idMeal, { overlapCount: 1 });
+        });
+      }
+    });
+    if (overlapMap.size === 0) return { recipes: [], allFailed: false };
+    const candidates = Array.from(overlapMap.entries())
+      .map(([idMeal, v]) => ({ idMeal, ...v }))
+      .sort((a, b) => b.overlapCount - a.overlapCount)
+      .slice(0, maxCandidates);
+    const rawDetails = await fetchJsonInBatches(candidates.map(c => `${API_BASE}lookup.php?i=${c.idMeal}`));
+    const recipes = rawDetails.map(d => (d && d.meals && d.meals[0]) || null).filter(Boolean).map(toInternalRecipe);
+    return { recipes, allFailed: false };
+  },
+  async searchByName(query){
+    const data = await fetchJsonWithRetry(`${API_BASE}search.php?s=${encodeURIComponent(query)}`);
+    const meals = (data && data.meals) || [];
+    return meals.map(toInternalRecipe);
+  },
+  // TheMealDB random.php ne rend qu'UNE recette par appel (pas de paramètre "count") : on multiplie les
+  // appels et on déduplique par id, sans jamais dépasser `count` résultats distincts.
+  async random(count = 1){
+    const urls = Array.from({ length: count }, () => `${API_BASE}random.php`);
+    const rawResponses = await fetchJsonInBatches(urls);
+    const seen = new Set();
+    const recipes = [];
+    rawResponses.forEach(data => {
+      const meal = data && data.meals && data.meals[0];
+      if (meal && !seen.has(meal.idMeal)) { seen.add(meal.idMeal); recipes.push(toInternalRecipe(meal)); }
+    });
+    return recipes;
+  }
+};
 
 // ---- Tri et filtres des résultats de recherche ----
 let lastSearchResults = [];
@@ -4333,14 +4542,11 @@ async function searchRecipes(){
   cuisinerSource = "toutes";
 
   const ingredients = Array.from(selected);
-  const overlapMap = new Map(); // idMeal -> { overlapCount, strMeal, strMealThumb }
 
   try {
-    const rawResponses = await fetchJsonInBatches(ingredients.map(ing => `${API_BASE}filter.php?i=${ing}`));
+    const { recipes, allFailed } = await recipeProvider.searchByIngredients(ingredients);
     if (requestId !== cuisinerRequestId) return; // une recherche plus récente a déjà pris le relais
-    const responses = rawResponses.map(data => data ? { ok: true, data } : { ok: false });
 
-    const allFailed = responses.every(r => !r.ok);
     if (allFailed) {
       const community = await fetchCommunityCustomResults(ingredients);
       if (requestId !== cuisinerRequestId) return;
@@ -4353,28 +4559,8 @@ async function searchRecipes(){
       return;
     }
 
-    responses.forEach(r => {
-      if (r.ok && r.data && r.data.meals) {
-        r.data.meals.forEach(m => {
-          const cur = overlapMap.get(m.idMeal);
-          if (cur) cur.overlapCount++;
-          else overlapMap.set(m.idMeal, { overlapCount: 1, strMeal: m.strMeal, strMealThumb: m.strMealThumb });
-        });
-      }
-    });
-
-    // On ne récupère le détail complet que pour les meilleurs candidats (limite le nb d'appels API)
-    const candidates = Array.from(overlapMap.entries())
-      .map(([idMeal, v]) => ({ idMeal, ...v }))
-      .sort((a, b) => b.overlapCount - a.overlapCount)
-      .slice(0, 25);
-
-    const rawDetails = overlapMap.size > 0 ? await fetchJsonInBatches(candidates.map(c => `${API_BASE}lookup.php?i=${c.idMeal}`)) : [];
-    if (requestId !== cuisinerRequestId) return;
-    const details = rawDetails.map(d => (d && d.meals && d.meals[0]) || null);
-
     const [scored, community] = await Promise.all([
-      scoreAndTranslate(details.filter(Boolean), ingredients).then(s => s.slice(0, 12)),
+      scoreAndTranslate(recipes, ingredients).then(s => s.slice(0, 12)),
       fetchCommunityCustomResults(ingredients)
     ]);
     if (requestId !== cuisinerRequestId) return;
@@ -4393,11 +4579,13 @@ async function searchRecipes(){
   }
 }
 
-// ---- Logique de scoring partagée par la recherche par ingrédients et la recherche par nom ----
-async function scoreAndTranslate(meals, ingredients){
+// ---- Logique de scoring partagée par la recherche par ingrédients, par nom et par intention ----
+// `recipes` est déjà au format interne (adapté par recipeProvider en amont) — cette fonction ne connaît
+// aucun champ propre à un fournisseur.
+async function scoreAndTranslate(recipes, ingredients){
   const expiry = isAntiWasteActive() ? loadExpiryDates() : {};
 
-  const scored = meals.map(toInternalRecipe).map(recipe => {
+  const scored = recipes.map(recipe => {
     const feasibility = computeFeasibility(recipe.ingredients, BASE_SERVINGS);
     recipeCache.set(recipe.id, recipe);
     const { prepMinutes, totalMinutes } = estimateTimes(recipe.instructions, recipe.ingredients.length);
@@ -4429,11 +4617,10 @@ async function searchRecipeByName(query){
   cuisinerSource = "toutes";
   const ingredients = Array.from(selected);
   try {
-    const data = await fetchJsonWithRetry(`${API_BASE}search.php?s=${encodeURIComponent(query)}`);
+    const recipes = await recipeProvider.searchByName(query);
     if (requestId !== cuisinerRequestId) return;
-    const meals = data.meals || [];
     const [scored, community] = await Promise.all([
-      scoreAndTranslate(meals.slice(0, 12), ingredients),
+      scoreAndTranslate(recipes.slice(0, 12), ingredients),
       fetchCommunityCustomResults(ingredients, query)
     ]);
     if (requestId !== cuisinerRequestId) return;
@@ -4448,6 +4635,77 @@ async function searchRecipeByName(query){
   } catch (e) {
     if (requestId === cuisinerRequestId) resultsEl.innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Vérifie ta connexion internet et réessaie.</div>`;
   }
+}
+
+// ---- Moteur de recherche par intention ("Qu'est-ce qu'on mange ?", chantier P0) ----
+// Fonction pure côté données : ne touche ni au DOM, ni à `lastSearchResults`, ni à `cuisinerRequestId` — elle
+// rend une liste de résultats scorés (même forme que ceux produits par scoreAndTranslate()/
+// fetchCommunityCustomResults()) pour que la future UX "Qu'est-ce qu'on mange ?" les affiche comme elle
+// l'entend, sans dupliquer la logique de recherche/scoring de l'onglet Cuisiner existant (searchRecipes(),
+// searchRecipeByName(), qui restent inchangés dans leur usage DOM).
+const RECIPE_INTENTS = ["surprise", "quick", "craving", "fridge"];
+async function searchRecipesByIntent(intent, context = {}){
+  if (!RECIPE_INTENTS.includes(intent)) throw new Error(`Intention de recherche inconnue : "${intent}"`);
+  const fridgeIngredients = Array.isArray(context.fridgeIngredients) ? context.fridgeIngredients : [];
+  // excludeIds : id(s) de recette déjà montrés à conserver hors des résultats (boucle "Autre chose", écran
+  // "Qu'est-ce qu'on mange ?") — filtre additif appliqué en sortie de chaque branche, aucun impact sur les
+  // appelants qui ne le passent pas (context.excludeIds absent -> filtre no-op).
+  const excludeIds = new Set((context.excludeIds || []).map(String));
+  const withoutExcluded = (list) => excludeIds.size ? list.filter(r => !excludeIds.has(String(r.recipe.id))) : list;
+
+  if (intent === "craving") {
+    const query = (context.query || "").trim();
+    if (!query) return { intent, results: [], provisional: false };
+    const [recipes, community] = await Promise.all([
+      recipeProvider.searchByName(query),
+      fetchCommunityCustomResults(fridgeIngredients, query)
+    ]);
+    const scored = await scoreAndTranslate(recipes.slice(0, 12), fridgeIngredients);
+    return { intent, results: withoutExcluded([...scored, ...community]), provisional: false };
+  }
+
+  if (intent === "fridge") {
+    const { recipes, allFailed } = await recipeProvider.searchByIngredients(fridgeIngredients);
+    if (allFailed) return { intent, results: [], provisional: false, error: "unreachable" };
+    const [scored, community] = await Promise.all([
+      scoreAndTranslate(recipes, fridgeIngredients),
+      fetchCommunityCustomResults(fridgeIngredients)
+    ]);
+    return { intent, results: withoutExcluded([...scored, ...community]), provisional: false };
+  }
+
+  if (intent === "surprise") {
+    const recipes = await recipeProvider.random(context.count || 6);
+    // random.php renvoie toujours un repas en cas de succès (jamais "zéro résultat" côté fournisseur, à la
+    // différence d'une recherche par nom/ingrédient) : un tableau vide ici ne peut provenir que d'un échec
+    // réseau total sur chaque appel (fetchJsonInBatches avale les échecs individuels en null) — sans faire
+    // porter cette distinction à recipeProvider.random() lui-même, qui garde son contrat existant (Array).
+    if (recipes.length === 0) return { intent, results: [], provisional: false, error: "unreachable" };
+    const scored = await scoreAndTranslate(recipes, fridgeIngredients);
+    return { intent, results: withoutExcluded(scored), provisional: false };
+  }
+
+  // intent === "quick" : TheMealDB ne fournit aucun temps de préparation réel — solution PROVISOIRE,
+  // documentée comme telle (voir rapport, section 7) : on récupère un petit lot de candidats (via random.php,
+  // faute d'un vrai critère "temps" côté fournisseur), on les adapte, on estime leur temps (estimateTimes(),
+  // heuristique appliquée par scoreAndTranslate()), puis on classe les plus rapides en tête. Ce n'est PAS un
+  // filtre serveur fiable — chaque résultat porte `timesEstimated: true` pour le signaler explicitement.
+  // À remplacer par un vrai filtre côté fournisseur quand un futur catalogue exposera un prepMinutes réel.
+  const recipes = await recipeProvider.random(context.poolSize || 10);
+  if (recipes.length === 0) {
+    return {
+      intent, results: [], provisional: true, error: "unreachable",
+      provisionalReason: "temps estimés heuristiquement (estimateTimes) faute de prepMinutes réel côté TheMealDB — pas un vrai filtre serveur"
+    };
+  }
+  const scored = await scoreAndTranslate(recipes, fridgeIngredients);
+  scored.sort((a, b) => a.prepMinutes - b.prepMinutes);
+  const filtered = context.maxMinutes ? scored.filter(r => r.prepMinutes <= context.maxMinutes) : scored;
+  const results = withoutExcluded(filtered);
+  return {
+    intent, results, provisional: true,
+    provisionalReason: "temps estimés heuristiquement (estimateTimes) faute de prepMinutes réel côté TheMealDB — pas un vrai filtre serveur"
+  };
 }
 
 async function showRecipeDetail(id, returnTo){
@@ -4503,7 +4761,7 @@ async function showRecipeDetail(id, returnTo){
   const isSaved = isRecipeSaved(recipe.id);
 
   resultsEl.innerHTML = `
-    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "mesplats" ? "Retour à mes plats" : currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : currentRecipeReturnTo === "hashtag" ? "Retour aux publications" : currentRecipeReturnTo === "enregistrees" ? "Retour aux recettes enregistrées" : "Retour aux résultats"}</button>
+    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "mesplats" ? "Retour à mes plats" : currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : currentRecipeReturnTo === "hashtag" ? "Retour aux publications" : currentRecipeReturnTo === "enregistrees" ? "Retour aux recettes enregistrées" : currentRecipeReturnTo === "quoimanger" ? "Retour" : "Retour aux résultats"}</button>
     <div class="recipe-detail">
       <img src="${recipe.image}" alt="">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
@@ -4563,6 +4821,7 @@ async function showRecipeDetail(id, returnTo){
     else if (currentRecipeReturnTo === "semaine") showSecondaryView("semaine");
     else if (currentRecipeReturnTo === "hashtag") showSecondaryView("hashtag", currentHashtag);
     else if (currentRecipeReturnTo === "enregistrees") showSecondaryView("enregistrees");
+    else if (currentRecipeReturnTo === "quoimanger") showWhatToEatScreen(true);
     else searchRecipes();
   });
   attachStepAccordion(resultsEl);
@@ -6660,7 +6919,7 @@ async function showCustomRecipeDetail(id, returnTo){
   const isSaved = isRecipeSaved(recipe.id);
 
   resultsEl.innerHTML = `
-    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : currentRecipeReturnTo === "hashtag" ? "Retour aux publications" : currentRecipeReturnTo === "enregistrees" ? "Retour aux recettes enregistrées" : "Retour à mes plats"}</button>
+    <button class="back-btn" id="backBtn">← ${currentRecipeReturnTo === "communaute" ? "Retour au fil" : currentRecipeReturnTo === "profil" ? "Retour au profil" : currentRecipeReturnTo === "semaine" ? "Retour à ma semaine" : currentRecipeReturnTo === "hashtag" ? "Retour aux publications" : currentRecipeReturnTo === "enregistrees" ? "Retour aux recettes enregistrées" : currentRecipeReturnTo === "quoimanger" ? "Retour" : "Retour à mes plats"}</button>
     <div class="recipe-detail">
       ${recipe.image ? `<img src="${recipe.image}" alt="">` : ""}
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
@@ -6725,6 +6984,7 @@ async function showCustomRecipeDetail(id, returnTo){
     else if (currentRecipeReturnTo === "semaine") showSecondaryView("semaine");
     else if (currentRecipeReturnTo === "hashtag") showSecondaryView("hashtag", currentHashtag);
     else if (currentRecipeReturnTo === "enregistrees") showSecondaryView("enregistrees");
+    else if (currentRecipeReturnTo === "quoimanger") showWhatToEatScreen(true);
     else switchTab("mesplats");
   });
   const authorLinkEl = document.getElementById("recipeAuthorLink");
@@ -7185,6 +7445,142 @@ document.querySelectorAll(".secondary-back-btn").forEach(btn => {
   btn.addEventListener("click", () => switchTab(lastMainTab));
 });
 
+// ---- Écran d'entrée "Qu'est-ce qu'on mange ?" (chantier UX P0, 27/08/2026) ----
+// Ne connaît que searchRecipesByIntent() et le format interne Olymi (recipe.image/title/ingredients/
+// timesEstimated...) — jamais un champ brut TheMealDB (strMeal, idMeal...) ni un endpoint de fournisseur.
+// "Je cuisine" réutilise openRecipeDetail()/showRecipeDetail() tels quels : aucune deuxième fiche recette.
+let qmRequestId = 0;
+let qmState = null; // { intent, baseContext, shownIds } — null tant qu'aucune action n'a été lancée
+
+// restore=true : retour depuis une fiche recette ouverte depuis cet écran (currentRecipeReturnTo ===
+// "quoimanger") -> on retrouve l'état déjà en mémoire (qmState.lastCard) sans relancer de requête réseau.
+// restore absent/false : entrée fraîche (connexion, clic d'onglet sans compte...) -> reset normal.
+function showWhatToEatScreen(restore){
+  document.getElementById("menuPanel").hidden = true;
+  document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== "view-quoimanger");
+  const shownView = document.getElementById("view-quoimanger");
+  shownView.classList.remove("view-enter"); void shownView.offsetWidth; shownView.classList.add("view-enter");
+  // Aucun onglet du bas ne correspond à cet écran d'entrée : ne jamais laisser "Communauté" (actif par
+  // défaut dans le HTML statique) ou un autre onglet paraître sélectionné ici. switchTab() reste seul
+  // responsable de l'état actif pour les onglets Frigo/Cuisiner/Mes plats/Communauté.
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  renderQmActions();
+  if (restore && qmState && qmState.lastCard) {
+    renderQmRecipeCard(qmState.lastCard.item, qmState.lastCard.response);
+  } else {
+    resetQmResult();
+  }
+}
+function renderQmActions(){
+  const fridgeBtn = document.getElementById("qmFridgeBtn");
+  if (fridgeBtn) fridgeBtn.hidden = selected.size === 0;
+  const form = document.getElementById("qmCravingForm");
+  if (form) form.hidden = true;
+  const input = document.getElementById("qmCravingInput");
+  if (input) input.value = "";
+  setQmActionsDisabled(false); // filet de sécurité : jamais d'action bloquée à l'entrée sur cet écran
+}
+function resetQmResult(){
+  qmState = null;
+  qmRequestId++; // invalide toute requête encore en vol si on revient sur cet écran entre-temps
+  document.getElementById("qmResult").innerHTML = "";
+}
+function renderQmLoading(){
+  document.getElementById("qmResult").innerHTML = `<div class="state-msg"><div class="spinner"></div>On cherche une idée…</div>`;
+}
+function renderQmError(){
+  document.getElementById("qmResult").innerHTML = `<div class="state-msg">Impossible de contacter la base de recettes.<br>Réessaie dans un instant.<br><button type="button" class="rate-taste-btn" id="qmRetryBtn" style="margin-top:8px;">↻ Réessayer</button></div>`;
+  const retryBtn = document.getElementById("qmRetryBtn");
+  if (retryBtn) retryBtn.addEventListener("click", qmRunCurrentSearch);
+}
+function renderQmEmpty(){
+  document.getElementById("qmResult").innerHTML = `<div class="state-msg">Rien trouvé pour cette envie 😕<br>Essaie autre chose.</div>`;
+}
+async function qmStartIntent(intent, baseContext){
+  qmState = { intent, baseContext, shownIds: [] };
+  await qmRunCurrentSearch();
+}
+// "Surprends-moi"/"Avec mon frigo"/"Chercher" vivent dans #qmActions, en dehors du bloc #qmResult que
+// renderQmLoading() vide à chaque recherche : contrairement à "Autre chose"/"Réessayer" (recréés dans
+// #qmResult, donc absents pendant le chargement), ils restaient cliquables pendant une recherche en cours
+// et déclenchaient des appels réseau superflus. Désactivés le temps de la recherche, sans rien changer
+// d'autre à l'écran.
+function setQmActionsDisabled(disabled){
+  const ids = ["qmSurpriseBtn", "qmFridgeBtn", "qmCravingToggleBtn"];
+  ids.forEach(id => { const el = document.getElementById(id); if (el) el.disabled = disabled; });
+  const submitBtn = document.querySelector('#qmCravingForm button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = disabled;
+}
+// Sert à la fois de boucle "Autre chose" et de bouton "Réessayer" : même intention, même contexte (query/
+// ingrédients conservés dans qmState.baseContext), seuls les ids déjà montrés s'accumulent dans shownIds.
+async function qmRunCurrentSearch(){
+  if (!qmState) return;
+  const requestId = ++qmRequestId;
+  setQmActionsDisabled(true);
+  renderQmLoading();
+  const context = { ...qmState.baseContext, excludeIds: qmState.shownIds };
+  let response;
+  try {
+    response = await searchRecipesByIntent(qmState.intent, context);
+  } catch (e) {
+    if (requestId !== qmRequestId) return; // une action plus récente a déjà pris le relais
+    setQmActionsDisabled(false);
+    renderQmError();
+    return;
+  }
+  // Protection contre une réponse réseau obsolète, même principe que cuisinerRequestId : un clic rapide
+  // sur "Autre chose" ne doit jamais laisser une requête plus ancienne écraser un résultat plus récent.
+  if (requestId !== qmRequestId) return;
+  setQmActionsDisabled(false);
+  if (response.error === "unreachable") { renderQmError(); return; }
+  if (!response.results || response.results.length === 0) { renderQmEmpty(); return; }
+  const picked = response.results[0];
+  qmState.shownIds.push(String(picked.recipe.id));
+  // Mémorisé pour pouvoir réafficher exactement cette carte au retour d'une fiche recette (voir
+  // showWhatToEatScreen(restore)), sans reproduire l'appel réseau.
+  qmState.lastCard = { item: picked, response };
+  renderQmRecipeCard(picked, response);
+}
+function renderQmRecipeCard(item, response){
+  const r = item.recipe;
+  const hasTime = item.prepMinutes != null;
+  const isEstimated = !!r.timesEstimated;
+  // Jamais "Prête en 15 min" comme un fait : ≈ + libellé explicite dès que le temps vient d'une estimation
+  // (TheMealDB ne fournit aucun temps réel) — voir champ timesEstimated du format interne.
+  const timeBadge = hasTime
+    ? `<span class="badge" title="${isEstimated ? "Temps estimé, pas garanti" : "Temps de prépa"}">🔪 ${isEstimated ? "≈" : ""}${item.prepMinutes} min</span>`
+    : "";
+  const ingredientNames = (r.ingredients || []).slice(0, 4).map(ing => translateIngredient(ing.name));
+  document.getElementById("qmResult").innerHTML = `
+    <div class="qm-card">
+      ${r.image ? `<img src="${r.image}" alt="" loading="lazy" decoding="async">` : `<div class="recipe-card-img-placeholder" style="width:100%;height:180px;margin:0 0 12px;"></div>`}
+      <h3>${escAttr(item.titleFr || r.title)}</h3>
+      <div class="badges">${timeBadge}</div>
+      ${ingredientNames.length ? `<ul class="qm-ingredients">${ingredientNames.map(n => `<li>${n}</li>`).join("")}</ul>` : ""}
+      ${response.provisional ? `<p class="hint" style="margin:0 0 12px;">⏱ Temps estimé, pas garanti.</p>` : ""}
+      <div class="qm-card-actions">
+        <button type="button" class="primary-btn" id="qmCookBtn">Je cuisine</button>
+        <button type="button" class="rate-taste-btn" id="qmAnotherBtn">Autre chose</button>
+      </div>
+    </div>
+  `;
+  document.getElementById("qmCookBtn").addEventListener("click", () => openRecipeDetail(r.id, "quoimanger"));
+  document.getElementById("qmAnotherBtn").addEventListener("click", qmRunCurrentSearch);
+}
+document.getElementById("qmSurpriseBtn").addEventListener("click", () => qmStartIntent("surprise", { count: 3 }));
+document.getElementById("qmFridgeBtn").addEventListener("click", () => qmStartIntent("fridge", { fridgeIngredients: Array.from(selected) }));
+document.getElementById("qmCravingToggleBtn").addEventListener("click", () => {
+  const form = document.getElementById("qmCravingForm");
+  form.hidden = !form.hidden;
+  if (!form.hidden) document.getElementById("qmCravingInput").focus();
+});
+document.getElementById("qmCravingForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const query = document.getElementById("qmCravingInput").value.trim();
+  if (!query) return;
+  qmStartIntent("craving", { query });
+});
+
 // ---- Navigation par onglets ----
 function switchTab(tab){
   releaseWakeLock();
@@ -7219,7 +7615,10 @@ function switchTab(tab){
   }
 }
 document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click", () => {
-  if (!currentUser && btn.dataset.tab !== "communaute") { showDiscoverScreen(); return; }
+  // Le verrou reste : un visiteur sans compte n'accède toujours pas à Frigo/Cuisiner/Mes plats. Seule sa
+  // destination change (l'ancien écran "Bienvenue" n'est plus la première expérience, voir initAuth()) —
+  // rien de nouveau ne devient accessible sans compte par ce changement.
+  if (!currentUser && btn.dataset.tab !== "communaute") { showWhatToEatScreen(); return; }
   switchTab(btn.dataset.tab);
 }));
 function setAuthFormExpanded(expanded){
