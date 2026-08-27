@@ -1417,9 +1417,10 @@ function hideSplash(){
 setTimeout(hideSplash, 3000); // filet de sécurité si la connexion au serveur est lente ou en échec
 
 async function initAuth(){
-  // Première expérience, sans compte : on ouvre directement sur "Bienvenue sur Olymi" plutôt que sur
-  // le formulaire de connexion, pour présenter l'application avant de demander à se connecter.
-  if (!sb) { renderAuthUI(); if (!currentUser) showWhatToEatScreen(); hideSplash(); return; }
+  // "Qu'est-ce qu'on mange ?" est le point d'entrée de l'application : affiché systématiquement au
+  // démarrage, connecté ou non (renderQmActions() adapte déjà les actions à l'état réel du frigo, restauré
+  // par loadProfile()/pullFromCloudAndMerge() -- déjà terminé à ce stade -- avant que cet appel n'ait lieu).
+  if (!sb) { renderAuthUI(); showWhatToEatScreen(); hideSplash(); return; }
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (session) await loadProfile(session.user);
@@ -1430,10 +1431,17 @@ async function initAuth(){
     // juste au-dessus par getSession() : sans ce garde-fou, le profil et le fil sont rechargés deux fois
     // de suite au lancement, ce qui provoquait un double clignotement visible à l'écran.
     if (session) { if (!currentUser || currentUser.id !== session.user.id) loadProfile(session.user); }
-    else { currentUser = null; currentProfile = null; renderAuthUI(); }
+    else {
+      currentUser = null; currentProfile = null;
+      // Aucune donnée du compte précédent ne doit rester utilisable après déconnexion : le frigo restauré
+      // depuis le cloud (selected) est un état privé, à vider avant de revenir sur l'écran public.
+      selected.clear();
+      renderAuthUI();
+      showWhatToEatScreen();
+    }
   });
   renderAuthUI();
-  if (!currentUser) showWhatToEatScreen();
+  showWhatToEatScreen();
   hideSplash();
 }
 
