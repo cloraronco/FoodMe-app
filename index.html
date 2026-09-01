@@ -159,12 +159,18 @@
   .notif-delete-btn:hover{color:var(--tomato);}
   .shopping-item{
     display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--line);
-    border-radius:12px;padding:12px 14px;margin-bottom:8px;
+    border-radius:12px;padding:12px 14px;margin-bottom:8px;transition:opacity .15s ease;
   }
   .shopping-item.checked{opacity:.5;}
   .shopping-item.checked label{text-decoration:line-through;}
-  .shopping-item label{flex:1;font-size:14.5px;}
-  .shopping-item button{background:none;border:none;color:var(--ink-dim);font-size:15px;cursor:pointer;padding:4px;}
+  .shopping-item input[type="checkbox"]{width:18px;height:18px;flex-shrink:0;accent-color:var(--basil);cursor:pointer;}
+  .shopping-item label{flex:1;font-size:14.5px;cursor:pointer;}
+  .shopping-item button{
+    background:none;border:none;color:var(--ink-dim);cursor:pointer;padding:4px;flex-shrink:0;
+    display:inline-flex;align-items:center;justify-content:center;opacity:.65;transition:opacity .12s ease,color .12s ease;
+  }
+  .shopping-item button:hover{opacity:1;color:var(--tomato);}
+  #listeCoursesContent h2{font-family:var(--font-display);font-weight:680;font-size:22px;margin:0 0 14px;color:var(--ink);}
   .clear-list-btn{
     background:none;border:none;color:var(--tomato);font-weight:600;font-size:13px;cursor:pointer;
     padding:8px 0;margin-top:8px;
@@ -519,8 +525,12 @@
   .week-recipe-item .info h4{margin:0 0 2px;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer;}
   .week-recipe-item .info h4:hover{text-decoration:underline;}
   .week-recipe-item .info span{font-size:12px;color:var(--ink-dim);}
-  .week-recipe-item .week-remove-btn{background:none;border:none;color:var(--ink-dim);font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;}
+  .week-recipe-item .week-remove-btn{
+    background:none;border:none;color:var(--ink-dim);cursor:pointer;padding:4px;flex-shrink:0;
+    display:inline-flex;align-items:center;justify-content:center;
+  }
   .week-recipe-item .week-remove-btn:hover{color:var(--tomato);}
+  .week-add-all-btn{display:flex;align-items:center;justify-content:center;gap:8px;}
   .week-mini-stepper{display:flex;align-items:center;gap:6px;margin-top:2px;}
   .week-mini-stepper button{
     width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--surface-2);
@@ -5108,11 +5118,17 @@ async function buildWeekShoppingList(){
   });
   return itemsToAdd;
 }
+const ICON_TRASH = '<svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6h11M8.2 6V4.3a1 1 0 0 1 1-1h1.6a1 1 0 0 1 1 1V6M6.3 6l.6 9.3a1.4 1.4 0 0 0 1.4 1.3h3.4a1.4 1.4 0 0 0 1.4-1.3L13.7 6"/><path d="M8.5 9v5M11.5 9v5"/></svg>';
+const ICON_CART = '<svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h1.6l1.7 9.3a1.6 1.6 0 0 0 1.6 1.3h6.4a1.6 1.6 0 0 0 1.6-1.3L17 7H5.3"/><circle cx="8" cy="17" r="1.2"/><circle cx="14.5" cy="17" r="1.2"/></svg>';
 function renderSemaine(){
   const week = loadWeekRecipes();
   const container = document.getElementById("semaineContent");
   if (week.length === 0) {
-    container.innerHTML = `<div class="state-msg">Aucune recette ajoutée pour l'instant.<br>Va dans Cuisiner et appuie sur 📅 sur une recette pour l'ajouter ici.<br><button type="button" class="rate-taste-btn" id="goToCuisinerFromSemaineBtn" style="margin-top:10px;">→ Aller cuisiner</button></div>`;
+    container.innerHTML = `<div class="state-msg">
+      <svg class="icon state-msg-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.2" width="14" height="12.3" rx="2"/><path d="M3 8.2h14M6.5 2.5v3M13.5 2.5v3"/></svg>
+      Aucune recette ajoutée pour l'instant.<br>Va dans Cuisiner et appuie sur 📅 sur une recette pour l'ajouter ici.
+      <br><button type="button" class="rate-taste-btn" id="goToCuisinerFromSemaineBtn" style="margin-top:10px;">→ Aller cuisiner</button>
+    </div>`;
     const goBtn = document.getElementById("goToCuisinerFromSemaineBtn");
     if (goBtn) goBtn.addEventListener("click", () => switchTab("cuisiner"));
     return;
@@ -5129,10 +5145,10 @@ function renderSemaine(){
             <button type="button" data-action="servings-plus" aria-label="Plus de personnes">+</button>
           </div>
         </div>
-        <button type="button" class="week-remove-btn" aria-label="Retirer">🗑</button>
+        <button type="button" class="week-remove-btn" aria-label="Retirer">${ICON_TRASH}</button>
       </div>
     `).join("")}
-    <button type="button" class="primary-btn" id="weekAddAllBtn" style="margin-top:8px;">🛒 Ajouter les ingrédients manquants à la liste de courses</button>
+    <button type="button" class="primary-btn week-add-all-btn" id="weekAddAllBtn" style="margin-top:8px;">${ICON_CART}<span id="weekAddAllBtnLabel">Ajouter les ingrédients manquants à la liste de courses</span></button>
   `;
   container.querySelectorAll(".week-remove-btn").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -5161,17 +5177,18 @@ function renderSemaine(){
     });
   });
   const addAllBtn = document.getElementById("weekAddAllBtn");
+  const addAllBtnLabel = document.getElementById("weekAddAllBtnLabel");
   addAllBtn.addEventListener("click", async () => {
     addAllBtn.disabled = true;
-    addAllBtn.textContent = "Ajout en cours…";
+    addAllBtnLabel.textContent = "Ajout en cours…";
     try {
       const items = await buildWeekShoppingList();
       addToShoppingList(items);
-      addAllBtn.textContent = "✅ Ajoutés à la liste de courses";
+      addAllBtnLabel.textContent = "Ajoutés à la liste de courses";
     } catch (e) {
       console.warn("Ajout des ingrédients de la semaine impossible :", e);
       addAllBtn.disabled = false;
-      addAllBtn.textContent = "🛒 Ajouter les ingrédients manquants à la liste de courses";
+      addAllBtnLabel.textContent = "Ajouter les ingrédients manquants à la liste de courses";
     }
   });
 }
@@ -7122,16 +7139,22 @@ function renderShoppingList(){
   const list = loadShoppingList();
   const contentEl = document.getElementById("listeCoursesContent");
   if (list.length === 0) {
-    contentEl.innerHTML = `<div class="state-msg">Ta liste de courses est vide 🛒<br>Depuis une recette, ajoute les ingrédients qu'il te manque en un clic.</div>`;
+    contentEl.innerHTML = `<div class="state-msg">
+      <svg class="icon state-msg-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h1.6l1.7 9.3a1.6 1.6 0 0 0 1.6 1.3h6.4a1.6 1.6 0 0 0 1.6-1.3L17 7H5.3"/><circle cx="8" cy="17" r="1.2"/><circle cx="14.5" cy="17" r="1.2"/></svg>
+      Ta liste de courses est vide.<br>Depuis une recette ou "Ma semaine", ajoute en un clic ce qu'il te manque.
+      <br><button type="button" class="rate-taste-btn" id="goToCuisinerFromListeBtn" style="margin-top:10px;">→ Aller cuisiner</button>
+    </div>`;
+    const goBtn = document.getElementById("goToCuisinerFromListeBtn");
+    if (goBtn) goBtn.addEventListener("click", () => switchTab("cuisiner"));
     return;
   }
   contentEl.innerHTML = `
     <h2>Ta liste de courses</h2>
-    ${list.map(item => `
-      <div class="shopping-item${item.checked ? " checked" : ""}" data-id="${item.id}">
-        <input type="checkbox" ${item.checked ? "checked" : ""}>
-        <label>${item.label}</label>
-        <button type="button" aria-label="Retirer">✕</button>
+    ${list.map((item, idx) => `
+      <div class="shopping-item${item.checked ? " checked" : ""}" data-id="${escAttr(item.id)}">
+        <input type="checkbox" id="shopping-cb-${idx}" ${item.checked ? "checked" : ""}>
+        <label for="shopping-cb-${idx}">${item.label}</label>
+        <button type="button" aria-label="Retirer"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15"/></svg></button>
       </div>
     `).join("")}
     <button type="button" class="clear-list-btn" id="clearListBtn">Tout effacer</button>
