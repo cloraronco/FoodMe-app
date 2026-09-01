@@ -8,7 +8,11 @@ perso avec portions et autocomplétion d'ingrédients, mode sombre.
 ## Stack
 - Application **single-file** : tout le code (HTML/CSS/JS) vit dans `index.html` à la racine.
 - Pas de build, pas de bundler : le fichier est servi tel quel.
-- Persistance côté client via `localStorage` (clé `foodme_settings` pour les réglages, thème inclus).
+- Persistance côté client via `localStorage` (plusieurs clés, ex. `foodme_settings` pour les
+  réglages/thème, `foodme_expiry`, `foodme_fridge_quantities`, `foodme_ingredient_meta`).
+- Backend léger via **Supabase** (`index.html`, clé publishable en dur) : authentification,
+  réseau social (V2) et recettes communautaires partagées via la table `custom_recipes`.
+  Le frigo et la liste de courses restent, eux, uniquement en local.
 - UI en français.
 
 ## Ressources design à utiliser
