@@ -1289,9 +1289,9 @@
 <main id="view-quoimanger" class="view" hidden>
   <div class="qm-hero"><h2>Qu'est-ce qu'on mange ?</h2></div>
   <div class="qm-actions" id="qmActions">
-    <button type="button" class="qm-action-btn" id="qmSurpriseBtn">🎲 Surprends-moi</button>
+    <button type="button" class="qm-action-btn" id="qmSurpriseBtn"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="13" height="13" rx="3"/><circle cx="7" cy="7" r="0.9" fill="currentColor" stroke="none"/><circle cx="13" cy="7" r="0.9" fill="currentColor" stroke="none"/><circle cx="10" cy="10" r="0.9" fill="currentColor" stroke="none"/><circle cx="7" cy="13" r="0.9" fill="currentColor" stroke="none"/><circle cx="13" cy="13" r="0.9" fill="currentColor" stroke="none"/></svg>Surprends-moi</button>
     <button type="button" class="qm-action-btn" id="qmFridgeBtn" hidden><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="2.3" width="11" height="15.4" rx="2"/><path d="M4.5 7.6h11"/><path d="M7.3 4.2v1.7M7.3 10.1v1.7"/></svg>Avec mon frigo</button>
-    <button type="button" class="qm-action-btn" id="qmCravingToggleBtn">😋 J'ai envie de…</button>
+    <button type="button" class="qm-action-btn" id="qmCravingToggleBtn"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17.3c-3 0-5.2-2.1-5.2-5 0-2.7 1.8-4.1 2.6-6.6.5 1.1 1 1.7 1.8 1.7.1-2.1 1-3.9 2.4-5.1.1 2.1 1.2 3.1 2.3 4.5 1 1.4 1.3 2.9 1.3 4.4 0 3-2.2 6.1-5.2 6.1Z"/></svg>J'ai envie de…</button>
   </div>
   <form id="qmCravingForm" class="qm-craving-form" hidden novalidate>
     <input type="text" id="qmCravingInput" class="search-input" placeholder="Pâtes, poulet, quelque chose de léger…" maxlength="60" autocomplete="off">
@@ -1513,7 +1513,12 @@ async function initAuth(){
     // juste au-dessus par getSession() : sans ce garde-fou, le profil et le fil sont rechargés deux fois
     // de suite au lancement, ce qui provoquait un double clignotement visible à l'écran.
     if (session) { if (!currentUser || currentUser.id !== session.user.id) loadProfile(session.user); }
-    else {
+    // Même garde-fou que ci-dessus pour la branche "pas de session" : sans le `if (currentUser)`, l'écho
+    // initial de l'abonnement (session déjà null, donc rien à faire) déclenchait quand même reset + un
+    // second showWhatToEatScreen() pour un visiteur jamais connecté (double qm_screen_viewed en analytics).
+    // Un vrai signOut() garantit currentUser non-null juste avant cet évènement : ce garde-fou ne change
+    // rien au comportement de la déconnexion elle-même.
+    else if (currentUser) {
       currentUser = null; currentProfile = null;
       // Aucune donnée du compte précédent ne doit rester utilisable après déconnexion : le frigo restauré
       // depuis le cloud (selected) est un état privé, à vider avant de revenir sur l'écran public.
@@ -2099,6 +2104,7 @@ function updateAuthGatedNav(){
 // ---- Écran "Découvrir l'application", affiché à la place d'une action bloquée pour les visiteurs non connectés,
 // et par défaut au tout premier chargement tant qu'aucun compte n'est connecté (première expérience) ----
 function showDiscoverScreen(){
+  qmMaybeTrackAbandon();
   document.getElementById("menuPanel").hidden = true;
   document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== "view-decouvrirapp");
 }
@@ -5784,6 +5790,9 @@ function attachDoneFlow(recipe, servings){
     if (sb && currentUser) sb.rpc("increment_cook_count", { p_recipe_id: String(recipe.id) }).then(({ error }) => {
       if (error) console.warn("Comptage anonyme de cuisson impossible :", error);
     });
+    // qm_recipe_cooked : uniquement quand cette recette a été atteinte depuis "Qu'est-ce qu'on mange ?"
+    // (voir currentRecipeReturnTo, positionné par openRecipeDetail(r.id, "quoimanger")).
+    if (currentRecipeReturnTo === "quoimanger") trackQmEvent("qm_recipe_cooked", { recipe_id: recipe.id });
     const usedFromSelection = Array.from(selected).filter(v =>
       recipe.ingredients.some(ing => ingredientMatchesFridgeValueForIngredient(ing, v))
     );
@@ -7599,10 +7608,44 @@ document.querySelectorAll(".secondary-back-btn").forEach(btn => {
 let qmRequestId = 0;
 let qmState = null; // { intent, baseContext, shownIds } — null tant qu'aucune action n'a été lancée
 
+// ---- Analytics QM (P0, 01/09/2026) : mesure minimale du parcours "Qu'est-ce qu'on mange ?" (voir
+// rapport d'audit) — table Supabase analytics_events, insert-only (RLS), jamais bloquant pour l'UX :
+// un échec d'envoi (réseau, table absente...) ne doit jamais casser une action utilisateur.
+const QM_ANALYTICS_SESSION_KEY = "foodme_session_id";
+function getAnalyticsSessionId(){
+  try {
+    let id = localStorage.getItem(QM_ANALYTICS_SESSION_KEY);
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem(QM_ANALYTICS_SESSION_KEY, id); }
+    return id;
+  } catch (e) { return "no-storage"; } // navigation privée ou storage désactivé : pas de session stable, pas bloquant
+}
+function trackQmEvent(eventName, properties = {}){
+  if (!sb) return;
+  sb.from("analytics_events").insert({
+    event_name: eventName,
+    session_id: getAnalyticsSessionId(),
+    user_id: currentUser ? currentUser.id : null,
+    properties
+  }).then(({ error }) => { if (error) console.warn("Analytics QM :", eventName, error); });
+}
+// true dès que "Je cuisine" a été cliqué depuis l'affichage courant de l'écran QM (pas remis à zéro par
+// un simple retour depuis la fiche recette, voir showWhatToEatScreen(restore)) — sert à ne pas compter
+// comme "abandon" un utilisateur qui a déjà atteint l'objectif de cet écran au moins une fois.
+let qmConverted = false;
+// Appelé juste avant de quitter réellement l'écran QM (switchTab()/showDiscoverScreen()) : si l'écran
+// était visible et qu'aucune recette n'a été ouverte depuis, c'est un abandon au sens du funnel P0.
+function qmMaybeTrackAbandon(){
+  const qmView = document.getElementById("view-quoimanger");
+  if (qmView && !qmView.hidden && !qmConverted) {
+    trackQmEvent("qm_screen_abandoned", { intent: qmState ? qmState.intent : null, had_recipe: !!(qmState && qmState.lastCard) });
+  }
+}
+
 // restore=true : retour depuis une fiche recette ouverte depuis cet écran (currentRecipeReturnTo ===
 // "quoimanger") -> on retrouve l'état déjà en mémoire (qmState.lastCard) sans relancer de requête réseau.
 // restore absent/false : entrée fraîche (connexion, clic d'onglet sans compte...) -> reset normal.
 function showWhatToEatScreen(restore){
+  if (!restore) { qmConverted = false; trackQmEvent("qm_screen_viewed"); }
   document.getElementById("menuPanel").hidden = true;
   document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== "view-quoimanger");
   const shownView = document.getElementById("view-quoimanger");
@@ -7644,6 +7687,7 @@ function renderQmEmpty(){
   document.getElementById("qmResult").innerHTML = `<div class="state-msg">Rien trouvé pour cette envie 😕<br>Essaie autre chose.</div>`;
 }
 async function qmStartIntent(intent, baseContext){
+  trackQmEvent("qm_intent_selected", { intent });
   qmState = { intent, baseContext, shownIds: [] };
   await qmRunCurrentSearch();
 }
@@ -7686,6 +7730,7 @@ async function qmRunCurrentSearch(){
   // Mémorisé pour pouvoir réafficher exactement cette carte au retour d'une fiche recette (voir
   // showWhatToEatScreen(restore)), sans reproduire l'appel réseau.
   qmState.lastCard = { item: picked, response };
+  trackQmEvent("qm_recipe_shown", { intent: qmState.intent, recipe_id: picked.recipe.id, provisional: !!response.provisional });
   renderQmRecipeCard(picked, response);
 }
 function renderQmRecipeCard(item, response){
@@ -7711,8 +7756,15 @@ function renderQmRecipeCard(item, response){
       </div>
     </div>
   `;
-  document.getElementById("qmCookBtn").addEventListener("click", () => openRecipeDetail(r.id, "quoimanger"));
-  document.getElementById("qmAnotherBtn").addEventListener("click", qmRunCurrentSearch);
+  document.getElementById("qmCookBtn").addEventListener("click", () => {
+    trackQmEvent("qm_recipe_opened", { intent: qmState ? qmState.intent : null, recipe_id: r.id });
+    qmConverted = true;
+    openRecipeDetail(r.id, "quoimanger");
+  });
+  document.getElementById("qmAnotherBtn").addEventListener("click", () => {
+    trackQmEvent("qm_another_clicked", { intent: qmState ? qmState.intent : null });
+    qmRunCurrentSearch();
+  });
 }
 document.getElementById("qmSurpriseBtn").addEventListener("click", () => qmStartIntent("surprise", { count: 3 }));
 document.getElementById("qmFridgeBtn").addEventListener("click", () => qmStartIntent("fridge", { fridgeIngredients: Array.from(selected) }));
@@ -7730,6 +7782,7 @@ document.getElementById("qmCravingForm").addEventListener("submit", (e) => {
 
 // ---- Navigation par onglets ----
 function switchTab(tab){
+  qmMaybeTrackAbandon();
   releaseWakeLock();
   lastMainTab = tab;
   document.querySelectorAll(".view").forEach(v => v.hidden = v.id !== `view-${tab}`);

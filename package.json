@@ -1,0 +1,13 @@
+{
+  "name": "olymi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Olymi (ex-FoodMe) — app single-file (index.html), servie sans build. Ce package.json existe uniquement pour l'infra de tests E2E (Playwright).",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "serve": "^14.2.6"
+  }
+}
