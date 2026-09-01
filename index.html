@@ -2513,7 +2513,7 @@ function renderNotificationHTML(n){
   const author = (n.profiles && n.profiles.username) || "?";
   const color = (n.profiles && n.profiles.avatar_color) || "#1F251F";
   const avatarUrl = n.profiles && n.profiles.avatar_url;
-  const avatarStyle = avatarUrl ? `background:url('${avatarUrl}') center/cover no-repeat;` : `background:${color};`;
+  const avatarStyle = avatarUrl ? `background:url('${escAttr(avatarUrl)}') center/cover no-repeat;` : `background:${color};`;
   const text = n.type === "comment" ? `<b>${escAttr(author)}</b> a commenté ta publication.`
     : n.type === "follow" ? `<b>${escAttr(author)}</b> a commencé à te suivre.`
     : n.type === "mention" ? `<b>${escAttr(author)}</b> t'a mentionné.`
@@ -2656,7 +2656,7 @@ function renderFeedCardHTML(post){
   const author = (post.profiles && post.profiles.username) || "?";
   const color = (post.profiles && post.profiles.avatar_color) || "#1F251F";
   const avatarUrl = post.profiles && post.profiles.avatar_url;
-  const avatarStyle = avatarUrl ? `background:url('${avatarUrl}') center/cover no-repeat;` : `background:${color};`;
+  const avatarStyle = avatarUrl ? `background:url('${escAttr(avatarUrl)}') center/cover no-repeat;` : `background:${color};`;
   const liked = currentUser && post.likes.some(l => l.user_id === currentUser.id);
   const isOwnPost = currentUser && post.user_id === currentUser.id;
   const isEditing = editingPostId === post.id;
@@ -2684,7 +2684,7 @@ function renderFeedCardHTML(post){
           </div>
         </div>` : ""}
       </div>
-      ${!isEditing && image ? `<img class="feed-image" src="${image}" alt="" loading="lazy" decoding="async">` : ""}
+      ${!isEditing && image ? `<img class="feed-image" src="${escAttr(image)}" alt="" loading="lazy" decoding="async">` : ""}
       ${isEditing ? `
         <div class="feed-edit-form">
           ${(() => {
@@ -2706,7 +2706,7 @@ function renderFeedCardHTML(post){
           })()}
           <input type="text" class="search-input edit-title-input" placeholder="Titre de ta publication (facultatif)" maxlength="80" value="${escAttr(post.post_title || "")}">
           <input type="text" class="search-input edit-tagged-input" placeholder="👤 Fait avec... (pseudo, facultatif)" maxlength="24" style="margin-top:8px;" value="${(post.tagged && post.tagged.username) ? escAttr(post.tagged.username) : ""}">
-          <textarea class="search-input edit-comment-input" placeholder="Un petit mot sur ta recette (facultatif — @pseudo pour mentionner quelqu'un)" style="margin-top:8px;resize:vertical;min-height:60px;">${post.comment || ""}</textarea>
+          <textarea class="search-input edit-comment-input" placeholder="Un petit mot sur ta recette (facultatif — @pseudo pour mentionner quelqu'un)" style="margin-top:8px;resize:vertical;min-height:60px;">${escAttr(post.comment || "")}</textarea>
           <div class="edit-actions">
             <button type="button" class="primary-btn" data-action="save-edit">Enregistrer</button>
             <button type="button" class="rate-taste-btn" data-action="cancel-edit">Annuler</button>
@@ -3118,6 +3118,7 @@ function attachAuthHandlers(){
 
   document.getElementById("signOutBtn").addEventListener("click", async () => {
     if (sb) await sb.auth.signOut();
+    clearLocalUserData();
   });
 
   document.getElementById("deleteAccountBtn").addEventListener("click", openDeleteAccountStep1);
@@ -3441,6 +3442,14 @@ function loadFridgeQuantities(){
   catch(e) { return {}; }
 }
 function saveFridgeQuantities(q){ localStorage.setItem("foodme_fridge_quantities", JSON.stringify(q)); }
+// Vide les données locales propres à l'utilisateur (frigo, recettes, réglages…) pour éviter
+// qu'elles ne fuitent vers un autre compte connecté ensuite sur le même appareil.
+function clearLocalUserData(){
+  ["foodme_settings", "foodme_pending_avatar", "foodme_fridge_meta", "foodme_pending_inventory_ops",
+   "foodme_ingredient_meta", "foodme_expiry", "foodme_fridge_quantities", "foodme_waste_saved",
+   "foodme_cooked", "foodme_leftovers", "foodme_week", "foodme_saved_folders", "foodme_saved_recipes",
+   "foodme_custom_recipes", "foodme_shopping"].forEach(k => localStorage.removeItem(k));
+}
 function setFridgeQuantity(value, amount, unit){
   const q = loadFridgeQuantities();
   if (amount && unit) q[value] = { amount: Number(amount), unit };
@@ -7156,8 +7165,7 @@ async function performAccountDeletion(){
     if (error || (data && data.error)) throw error || new Error(data.error);
     card.innerHTML = `<h3>Compte supprimé</h3><p>À bientôt peut-être 👋</p>`;
     // Nettoie les données locales de cet appareil (le compte n'existe plus côté serveur).
-    ["foodme_custom_recipes"].forEach(k => localStorage.removeItem(k));
-    saveExpiryDates({}); saveCookedDishes([]); saveShoppingList([]); saveWeekRecipes([]);
+    clearLocalUserData();
     selected.clear();
     setTimeout(async () => {
       closeDeleteAccountModal();
@@ -7393,7 +7401,7 @@ document.getElementById("profileSearchInput").addEventListener("input", (e) => {
         resultsEl.innerHTML = `<div class="profile-search-item" style="cursor:default;color:var(--ink-dim);">Aucun profil trouvé</div>`;
       } else {
         resultsEl.innerHTML = results.map(p => {
-          const avatarStyle = p.avatar_url ? `background:url('${p.avatar_url}') center/cover no-repeat;` : `background:${p.avatar_color || "#1F251F"};`;
+          const avatarStyle = p.avatar_url ? `background:url('${escAttr(p.avatar_url)}') center/cover no-repeat;` : `background:${p.avatar_color || "#1F251F"};`;
           return `
             <div class="profile-search-item" data-user-id="${p.id}">
               <div class="feed-avatar" style="${avatarStyle}width:32px;height:32px;">${p.avatar_url ? "" : (p.username || "?")[0].toUpperCase()}</div>
