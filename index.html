@@ -20,7 +20,7 @@
 <title>Olymi — Share your taste</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,680;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Piazzolla:ital,wght@0,400..800;1,400..600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
   /* Identité Olymi : crème/papier, vert profond (encre de marque), sauge et rose poudré.
      Palette calme et élégante, cohérente avec le logo et la charte "Share your taste". */
@@ -43,7 +43,7 @@
     --danger:#B5453A;
     --radius:16px;
     --shadow:0 2px 10px rgba(31,37,31,.07),0 1px 2px rgba(31,37,31,.05);
-    --font-display:'Fraunces',Georgia,serif;
+    --font-display:'Piazzolla',Georgia,serif;
     --font-body:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
     --font-mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
   }
@@ -106,8 +106,12 @@
   .menu-btn{
     position:relative;width:38px;height:38px;border-radius:10px;
     background:var(--surface);border:1px solid var(--line);color:var(--ink);
-    font-size:17px;cursor:pointer;flex-shrink:0;
+    cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+    transition:background-color .15s ease,border-color .15s ease;
   }
+  .menu-btn:hover{background:var(--surface-2);}
+  .menu-btn:disabled,.menu-btn.nav-disabled{opacity:.4;cursor:default;}
+  .icon{width:18px;height:18px;flex-shrink:0;}
   .header-login-btn{
     height:38px;padding:0 14px;border-radius:10px;flex-shrink:0;
     background:var(--surface);border:1px solid var(--line);color:var(--ink-dim);
@@ -134,8 +138,11 @@
     display:flex;align-items:center;justify-content:space-between;width:100%;
     background:none;border:none;padding:11px 10px;border-radius:9px;
     font-family:var(--font-body);font-size:14.5px;font-weight:600;color:var(--ink);cursor:pointer;text-align:left;
+    transition:background-color .15s ease;
   }
   .menu-item:hover{background:var(--surface-2);}
+  .menu-item-left{display:flex;align-items:center;gap:11px;}
+  .menu-item-left .icon{color:var(--ink-dim);}
   .menu-count{color:var(--tomato-dark);font-weight:700;font-size:13px;}
   .notif-panel{
     position:absolute;top:60px;right:16px;z-index:20;
@@ -226,6 +233,7 @@
     border:1.5px dashed var(--line);
     border-radius:16px;
   }
+  .state-msg-icon{display:block;width:26px;height:26px;margin:0 auto 10px;opacity:.5;}
   .urgent-header{
     font-size:12.5px;font-weight:700;color:var(--tomato-dark);margin:14px 0 8px;
     text-transform:uppercase;letter-spacing:0.02em;
@@ -454,12 +462,15 @@
   }
   .tab-btn{
     position:relative;
-    flex:1;padding:9px 4px 6px;border-radius:10px;background:none;
-    color:var(--ink-dim);font-family:var(--font-body);font-size:11.5px;font-weight:600;cursor:pointer;
+    flex:1;padding:8px 4px 6px;border-radius:10px;background:none;
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+    color:var(--ink-dim);font-family:var(--font-body);font-size:11px;font-weight:600;cursor:pointer;
     border:none;
     transition:color .18s ease,background-color .18s ease,transform .12s ease;
   }
   .tab-btn:active{transform:scale(.93);}
+  .tab-icon{width:21px;height:21px;flex-shrink:0;}
+  .tab-label{line-height:1.1;}
   .tab-badge{
     position:absolute;top:2px;right:14px;min-width:16px;height:16px;padding:0 4px;
     background:var(--tomato);color:#fff;border-radius:999px;font-size:10px;font-weight:700;
@@ -482,9 +493,17 @@
   @media (prefers-reduced-motion: reduce){.view-enter{animation:none;}}
   .add-toggle-btn{
     width:100%;padding:13px;margin:16px 0;border-radius:12px;
+    display:flex;align-items:center;justify-content:center;gap:8px;
     background:var(--surface);border:1.5px solid var(--basil);color:var(--basil-ink);
-    font-family:var(--font-body);font-weight:700;cursor:pointer;
+    font-family:var(--font-body);font-size:14.5px;font-weight:700;cursor:pointer;
+    transition:background-color .15s ease,transform .1s ease;
   }
+  .add-toggle-btn:hover{background:var(--basil-tint);}
+  .add-toggle-btn:active{transform:scale(.98);}
+  .search-field{position:relative;}
+  .search-field:has(>input[hidden]){display:none;}
+  .search-field-icon{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--ink-dim);}
+  .search-field .search-input{padding-left:40px;}
   .fridge-summary{
     background:var(--surface);border:1px solid var(--line);border-radius:16px;
     padding:16px 16px 6px;margin-top:18px;box-shadow:var(--shadow);
@@ -531,25 +550,30 @@
     color:var(--basil-ink);font-family:var(--font-body);font-weight:500;
     border-radius:999px;padding:6px 6px 6px 12px;font-size:13px;margin:0 6px 6px 0;
   }
-  .pill button{background:none;border:none;color:var(--basil-ink);opacity:.65;cursor:pointer;font-size:14px;padding:2px 6px;}
+  .pill button{background:none;border:none;color:var(--basil-ink);opacity:.65;cursor:pointer;padding:2px 6px;display:inline-flex;align-items:center;justify-content:center;transition:opacity .12s ease;}
+  .pill button:hover{opacity:1;}
   .pill.expiring{background:var(--tomato-tint);border-color:var(--tomato);color:var(--tomato-dark);}
   .pill.expiring button{color:var(--tomato-dark);}
-  .expiry-tag{font-size:11px;font-weight:700;margin-left:2px;}
-  .expiry-hint{font-size:11px;opacity:.55;margin-left:3px;}
+  .icon-xs{width:11px;height:11px;}
+  .expiry-tag{display:inline-flex;align-items:center;gap:2px;font-size:11px;font-weight:700;margin-left:2px;}
+  .expiry-hint{display:inline-flex;align-items:center;gap:2px;font-size:11px;opacity:.55;margin-left:3px;}
+  .pill-label{display:inline-flex;align-items:center;}
   .pill-label.clickable{cursor:pointer;}
   .expiry-input{margin-left:6px;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:2px 4px;}
-  .qty-hint{font-size:11px;opacity:.55;margin-left:3px;}
+  .qty-hint{display:inline-flex;align-items:center;gap:2px;font-size:11px;opacity:.55;margin-left:3px;}
   .qty-row{display:flex;gap:4px;margin:4px 0 0 4px;width:100%;}
   .qty-amount-input{width:64px;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:3px 6px;}
   .qty-unit-select{font-size:12px;border:1px solid var(--line);border-radius:6px;padding:3px 4px;}
-  .verify-banner{background:var(--sage-tint,#EEF3EA);border:1px solid var(--sage,#8FA687);border-radius:12px;padding:10px 12px;margin-bottom:12px;}
-  .verify-banner-text{font-size:13px;font-weight:600;margin-bottom:8px;}
+  .verify-banner{background:var(--basil-tint);border:1px solid var(--basil);border-radius:12px;padding:10px 12px;margin-bottom:12px;}
+  .verify-banner-text{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:flex-start;gap:6px;}
+  .verify-banner-text .icon{flex-shrink:0;margin-top:1px;width:15px;height:15px;}
   .verify-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;font-size:13px;border-top:1px solid rgba(0,0,0,.06);}
   .verify-row:first-child{border-top:none;}
   .verify-actions{display:flex;gap:6px;flex-shrink:0;}
-  .verify-actions button{font-size:11.5px;border:1px solid var(--line);border-radius:999px;padding:4px 9px;background:#fff;cursor:pointer;}
-  .verify-confirm{color:var(--basil-ink,#2F4B36);border-color:var(--sage,#8FA687)!important;}
-  .verify-remove{color:var(--tomato-dark,#B23A2E);}
+  .verify-actions button{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-family:var(--font-body);border:1px solid var(--line);border-radius:999px;padding:4px 9px;background:var(--surface);color:var(--ink);cursor:pointer;}
+  .verify-actions .icon{width:12px;height:12px;}
+  .verify-confirm{color:var(--basil-ink)!important;border-color:var(--basil)!important;}
+  .verify-remove{color:var(--tomato-dark);}
   .leftover-banner{background:var(--saffron-tint);border:1px solid var(--saffron);border-radius:12px;padding:10px 12px;margin-bottom:12px;}
   .leftover-banner-text{font-size:13px;font-weight:600;margin-bottom:8px;color:var(--saffron-ink);}
   .leftover-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;font-size:13px;border-top:1px solid rgba(0,0,0,.06);}
@@ -804,7 +828,7 @@
   .like-btn.liked{color:var(--tomato);}
   .like-icon{display:inline-block;}
   @keyframes likePop{0%{transform:scale(1);}35%{transform:scale(1.4);}60%{transform:scale(.92);}100%{transform:scale(1);}}
-  .like-icon.like-pop{animation:likePop .35s cubic-bezier(.34,1.56,.64,1);}
+  .like-icon.like-pop{animation:likePop .35s cubic-bezier(.16,1,.3,1);}
   @media (prefers-reduced-motion: reduce){.like-icon.like-pop{animation:none;}}
   .share-post-btn{background:none;border:none;font-size:16px;cursor:pointer;color:var(--ink-dim);margin-left:auto;padding:0;}
   .share-post-btn:active{opacity:.6;}
@@ -826,7 +850,7 @@
   }
   .success-icon{display:inline-block;font-size:34px;line-height:1;margin-bottom:6px;}
   @keyframes successPop{0%{transform:scale(0.4) rotate(-8deg);opacity:0;}60%{transform:scale(1.15) rotate(3deg);opacity:1;}100%{transform:scale(1) rotate(0);}}
-  .success-icon.pop{animation:successPop .45s cubic-bezier(.34,1.56,.64,1);}
+  .success-icon.pop{animation:successPop .45s cubic-bezier(.16,1,.3,1);}
   @media (prefers-reduced-motion: reduce){.success-icon.pop{animation:none;}}
   #appToast{
     position:fixed;left:50%;bottom:78px;transform:translateX(-50%) translateY(10px);
@@ -910,25 +934,25 @@
     <h1><img id="headerLogoImg" class="header-logo-img" alt="">Olymi</h1>
     <div style="display:flex;align-items:center;gap:8px;">
       <button type="button" id="headerAvatarBtn" class="header-avatar-btn" aria-label="Mon profil" hidden></button>
-      <button type="button" id="notifBtn" class="menu-btn" aria-label="Notifications" hidden>🔔<span id="notifBadge" class="menu-badge" hidden></span></button>
+      <button type="button" id="notifBtn" class="menu-btn" aria-label="Notifications" hidden><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a4 4 0 0 1 8 0c0 3.2 1 4.5 1.5 5H4.5C5 12.5 6 11.2 6 8Z"/><path d="M8.3 16a1.8 1.8 0 0 0 3.4 0"/></svg><span id="notifBadge" class="menu-badge" hidden></span></button>
       <button type="button" id="headerLoginBtn" class="header-login-btn" hidden>Se connecter</button>
-      <button id="menuBtn" class="menu-btn" aria-label="Menu">☰</button>
+      <button id="menuBtn" class="menu-btn" aria-label="Menu"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 6h14M3 10h14M3 14h14"/></svg></button>
     </div>
   </div>
   <nav id="tabbar">
-    <button class="tab-btn" data-tab="frigo">🧊 Mon frigo</button>
-    <button class="tab-btn" data-tab="cuisiner">🍳 Cuisiner</button>
-    <button class="tab-btn" data-tab="mesplats">📖 Mes plats</button>
-    <button class="tab-btn active" data-tab="communaute">👥 Communauté</button>
+    <button class="tab-btn" data-tab="frigo"><svg class="tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="2.3" width="11" height="15.4" rx="2"/><path d="M4.5 7.6h11"/><path d="M7.3 4.2v1.7M7.3 10.1v1.7"/></svg><span class="tab-label">Mon frigo</span></button>
+    <button class="tab-btn" data-tab="cuisiner"><svg class="tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h12v2.4a6 6 0 0 1-12 0V9Z"/><path d="M2.4 9h15.2"/><path d="M6.2 9V7.3M13.8 9V7.3"/><path d="M8.2 4.3c.6-.6.6-1.1 0-1.7M11.8 4.3c.6-.6.6-1.1 0-1.7"/></svg><span class="tab-label">Cuisiner</span></button>
+    <button class="tab-btn" data-tab="mesplats"><svg class="tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 5.3C8.6 4.2 6.7 3.7 4 3.7v11.2c2.7 0 4.6.5 6 1.6 1.4-1.1 3.3-1.6 6-1.6V3.7c-2.7 0-4.6.5-6 1.6Z"/><path d="M10 5.3v11.2"/></svg><span class="tab-label">Mes plats</span></button>
+    <button class="tab-btn active" data-tab="communaute"><svg class="tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.3" cy="6.7" r="2.4"/><path d="M2.5 16.2c0-2.9 2.1-4.7 4.8-4.7s4.8 1.8 4.8 4.7"/><circle cx="14.3" cy="7.3" r="2"/><path d="M13 11.5c2 .3 3.5 1.8 3.5 4.1"/></svg><span class="tab-label">Communauté</span></button>
   </nav>
   <div id="menuPanel" class="menu-panel" hidden>
-    <button type="button" class="menu-item" data-action="profil">👤 Profil</button>
-    <button type="button" class="menu-item" data-action="semaine">📅 Ma semaine <span id="menuWeekCount" class="menu-count"></span></button>
-    <button type="button" class="menu-item" data-action="enregistrees">🔖 Recettes enregistrées <span id="menuSavedCount" class="menu-count"></span></button>
-    <button type="button" class="menu-item" data-action="bilan">📊 Bilan</button>
-    <button type="button" class="menu-item" data-action="liste">🛒 Liste de courses <span id="menuListCount" class="menu-count"></span></button>
-    <button type="button" class="menu-item" data-action="premium">⭐ Premium</button>
-    <button type="button" class="menu-item" data-action="parametres">⚙️ Paramètres</button>
+    <button type="button" class="menu-item" data-action="profil"><span class="menu-item-left"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="6.5" r="3.2"/><path d="M3.5 17c0-3.4 2.9-5.6 6.5-5.6s6.5 2.2 6.5 5.6"/></svg><span>Profil</span></span></button>
+    <button type="button" class="menu-item" data-action="semaine"><span class="menu-item-left"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.2" width="14" height="12.3" rx="2"/><path d="M3 8.2h14M6.5 2.5v3M13.5 2.5v3"/></svg><span>Ma semaine</span></span> <span id="menuWeekCount" class="menu-count"></span></button>
+    <button type="button" class="menu-item" data-action="enregistrees"><span class="menu-item-left"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 3.5h9v13.2l-4.5-3-4.5 3V3.5Z"/></svg><span>Recettes enregistrées</span></span> <span id="menuSavedCount" class="menu-count"></span></button>
+    <button type="button" class="menu-item" data-action="bilan"><span class="menu-item-left"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17V10M10 17V3M16 17v-6"/></svg><span>Bilan</span></span></button>
+    <button type="button" class="menu-item" data-action="liste"><span class="menu-item-left"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 3.2h1.9l1.7 9.4a1.6 1.6 0 0 0 1.6 1.3h6.2a1.6 1.6 0 0 0 1.6-1.3l1-5.4H5.3"/><circle cx="8.2" cy="16.8" r="1.1"/><circle cx="14.5" cy="16.8" r="1.1"/></svg><span>Liste de courses</span></span> <span id="menuListCount" class="menu-count"></span></button>
+    <button type="button" class="menu-item" data-action="premium"><span class="menu-item-left"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M10 2.6l2.2 4.7 5.1.6-3.8 3.5.9 5.1L10 14l-4.4 2.5.9-5.1-3.8-3.5 5.1-.6L10 2.6Z"/></svg><span>Premium</span></span></button>
+    <button type="button" class="menu-item" data-action="parametres"><span class="menu-item-left"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.8v1.8M10 15.4v1.8M17.2 10h-1.8M4.6 10H2.8M15 5l-1.3 1.3M6.3 13.7L5 15M15 15l-1.3-1.3M6.3 6.3L5 5"/></svg><span>Paramètres</span></span></button>
   </div>
   <div id="notifPanel" class="notif-panel" hidden>
     <h2>Notifications</h2>
@@ -937,13 +961,19 @@
 </header>
 
 <main id="view-frigo" class="view" hidden>
-  <button id="toggleAddBtn" class="add-toggle-btn">+ Remplir mon frigo</button>
-  <input type="text" id="ingredientSearch" class="search-input" placeholder="🔍 Rechercher un ingrédient…" hidden>
+  <button id="toggleAddBtn" class="add-toggle-btn"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 3v14M3 10h14"/></svg><span>Remplir mon frigo</span></button>
+  <div class="search-field">
+    <svg class="search-field-icon icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8.5" cy="8.5" r="5"/><path d="M16 16l-3.3-3.3"/></svg>
+    <input type="text" id="ingredientSearch" class="search-input" placeholder="Rechercher un ingrédient…" hidden>
+  </div>
   <div id="categories" hidden></div>
-  <button id="toggleAddBtnBottom" class="add-toggle-btn" hidden>✓ Terminé</button>
+  <button id="toggleAddBtnBottom" class="add-toggle-btn" hidden><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg><span>Terminé</span></button>
   <div class="fridge-summary">
     <h2>Ton frigo actuellement</h2>
-    <input type="text" id="fridgeSearch" class="search-input" placeholder="🔍 J'ai déjà… ?" style="margin-bottom:12px;">
+    <div class="search-field" style="margin-bottom:12px;">
+      <svg class="search-field-icon icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8.5" cy="8.5" r="5"/><path d="M16 16l-3.3-3.3"/></svg>
+      <input type="text" id="fridgeSearch" class="search-input" placeholder="J'ai déjà… ?" style="margin-bottom:0;">
+    </div>
     <div id="fridgeSummary"></div>
   </div>
 </main>
@@ -3320,7 +3350,7 @@ function renderCategories(){
     <div class="category" data-idx="${i}">
       <button class="cat-header" data-idx="${i}">
         <span>${cat.name}</span>
-        <span class="cat-meta"><span class="cat-count"></span><span class="chevron">▾</span></span>
+        <span class="cat-meta"><span class="cat-count"></span><span class="chevron"><svg class="icon icon-xs" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 8l5 5 5-5"/></svg></span></span>
       </button>
       <div class="chips">
         ${cat.items.slice().sort((a, b) => a[0].localeCompare(b[0], "fr")).map(([label, value]) => `
@@ -3565,7 +3595,10 @@ function updateFridgeSummary(){
   const summaryEl = document.getElementById("fridgeSummary");
   if (!summaryEl) return;
   if (selected.size === 0) {
-    summaryEl.innerHTML = `<div class="state-msg" style="padding:12px 0;">Ton frigo est vide pour l'instant.</div>`;
+    summaryEl.innerHTML = `<div class="state-msg" style="padding:20px 0;">
+      <svg class="icon state-msg-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="2.3" width="11" height="15.4" rx="2"/><path d="M4.5 7.6h11"/><path d="M7.3 4.2v1.7M7.3 10.1v1.7"/></svg>
+      Ton frigo est vide pour l'instant.<br>Ajoute tes premiers ingrédients ci-dessus.
+    </div>`;
     return;
   }
   const searchInput = document.getElementById("fridgeSearch");
@@ -3589,13 +3622,13 @@ function updateFridgeSummary(){
   const labelFor = (value) => { const found = allItems.find(([, v]) => v === value); return found ? found[0] : value; };
   const verifyBanner = verifyItems.length > 0 ? `
     <div class="verify-banner">
-      <div class="verify-banner-text">🔍 Ton frigo a peut-être changé depuis la dernière vérification — vérifions ${verifyItems.length} aliment${verifyItems.length > 1 ? "s" : ""} important${verifyItems.length > 1 ? "s" : ""} ?</div>
+      <div class="verify-banner-text"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="8.5" cy="8.5" r="5"/><path d="M16 16l-3.3-3.3"/></svg><span>Ton frigo a peut-être changé depuis la dernière vérification — vérifions ${verifyItems.length} aliment${verifyItems.length > 1 ? "s" : ""} important${verifyItems.length > 1 ? "s" : ""} ?</span></div>
       <div class="verify-banner-list">
         ${verifyItems.map(v => `
           <div class="verify-row" data-value="${v.id}">
             <span>${labelFor(v.id)}${quantities[v.id] ? ` <span class="qty-hint">(${quantities[v.id].amount}${QUANTITY_UNITS[quantities[v.id].unit]})</span>` : ""}</span>
             <span class="verify-actions">
-              <button type="button" class="verify-confirm" data-value="${v.id}">✓ Toujours bon</button>
+              <button type="button" class="verify-confirm" data-value="${v.id}"><svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg>Toujours bon</button>
               <button type="button" class="verify-edit" data-value="${v.id}">Modifier</button>
               <button type="button" class="verify-remove" data-value="${v.id}">Terminé</button>
             </span>
@@ -3619,8 +3652,8 @@ function updateFridgeSummary(){
             const qty = quantities[value];
             return `
             <span class="pill${warn ? " expiring" : ""}" data-value="${value}">
-              <span class="pill-label${clickable ? " clickable" : ""}" data-value="${value}">${label}${warn ? `<span class="expiry-tag">${days < 0 ? "⚠️ périmé" : days === 0 ? "⚠️ auj." : `⚠️ ${days}j`}</span>` : (antiWaste && dateStr) ? `<span class="expiry-hint">📅 ${formatShortExpiryDate(dateStr)}</span>` : antiWaste ? `<span class="expiry-hint">📅</span>` : ""}${qty ? `<span class="qty-hint">(${qty.amount}${QUANTITY_UNITS[qty.unit]})</span>` : (quantitiesOn ? `<span class="qty-hint">📏</span>` : "")}</span>
-              <button aria-label="Retirer">×</button>
+              <span class="pill-label${clickable ? " clickable" : ""}" data-value="${value}">${label}${warn ? `<span class="expiry-tag"><svg class="icon icon-xs" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.2 17.3 16H2.7L10 3.2Z"/><path d="M10 8.3v3"/><path d="M10 14.1h.01"/></svg>${days < 0 ? "périmé" : days === 0 ? "auj." : `${days}j`}</span>` : (antiWaste && dateStr) ? `<span class="expiry-hint"><svg class="icon icon-xs" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.2" width="14" height="12.3" rx="2"/><path d="M3 8.2h14M6.5 2.5v3M13.5 2.5v3"/></svg>${formatShortExpiryDate(dateStr)}</span>` : antiWaste ? `<span class="expiry-hint"><svg class="icon icon-xs" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.2" width="14" height="12.3" rx="2"/><path d="M3 8.2h14M6.5 2.5v3M13.5 2.5v3"/></svg></span>` : ""}${qty ? `<span class="qty-hint">(${qty.amount}${QUANTITY_UNITS[qty.unit]})</span>` : (quantitiesOn ? `<span class="qty-hint"><svg class="icon icon-xs" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M10 7v6M7 10h6"/></svg></span>` : "")}</span>
+              <button aria-label="Retirer"><svg class="icon icon-xs" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 5l10 10M15 5L5 15"/></svg></button>
             </span>
             ${antiWaste ? `<input type="date" class="expiry-input" data-value="${value}" value="${dateStr || ""}" hidden>` : ""}
             ${quantitiesOn ? `
@@ -3638,7 +3671,7 @@ function updateFridgeSummary(){
     `;
   }).join("");
   if (!anyMatch) {
-    summaryEl.innerHTML = `<div class="state-msg" style="padding:12px 0;">😕 Non, tu n'as pas "${searchInput.value.trim()}" dans ton frigo.</div>`;
+    summaryEl.innerHTML = `<div class="state-msg" style="padding:12px 0;">Non, tu n'as pas « ${escAttr(searchInput.value.trim())} » dans ton frigo.</div>`;
   }
   if (clickable) {
     summaryEl.querySelectorAll(".pill-label.clickable").forEach(label => {
@@ -7658,7 +7691,9 @@ function toggleFridgeAdd(){
   const bottomBtn = document.getElementById("toggleAddBtnBottom");
   const isHidden = catEl.hasAttribute("hidden");
   [catEl, searchEl, bottomBtn].forEach(el => { if (isHidden) el.removeAttribute("hidden"); else el.setAttribute("hidden", ""); });
-  document.getElementById("toggleAddBtn").textContent = isHidden ? "✓ Terminé" : "+ Remplir mon frigo";
+  document.getElementById("toggleAddBtn").innerHTML = isHidden
+    ? `<svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5l4 4 8-9"/></svg><span>Terminé</span>`
+    : `<svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 3v14M3 10h14"/></svg><span>Remplir mon frigo</span>`;
   if (!isHidden) { searchEl.value = ""; filterIngredients(""); } // en fermant, on réinitialise le filtre
   else window.scrollTo({ top: 0, behavior: "smooth" }); // en fermant depuis le bas, on remonte en haut
 }
