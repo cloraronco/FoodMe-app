@@ -65,6 +65,28 @@ test.describe("QM — Surprends-moi", () => {
   });
 });
 
+test.describe("QM — Plus rapide ?", () => {
+  test("relance une recherche 'quick' et masque le lien une fois dedans", async ({ page, trackedEvents }) => {
+    await page.goto("/");
+    await page.click("#qmSurpriseBtn");
+    await expect(page.locator("#qmResult .qm-card")).toBeVisible({ timeout: 15000 });
+
+    const quickLink = page.locator("#qmQuickBtn");
+    await expect(quickLink).toBeVisible();
+
+    await quickLink.click();
+    await expect(page.locator("#qmResult .state-msg .spinner")).toBeVisible();
+    await expect(page.locator("#qmResult .qm-card")).toBeVisible({ timeout: 15000 });
+
+    // Une fois dans l'intention "quick", le raffinement ne doit plus se proposer lui-même
+    // (voir renderQmRecipeCard(), index.html : qmState.intent !== "quick").
+    await expect(page.locator("#qmQuickBtn")).toHaveCount(0);
+
+    await expect.poll(() => trackedEvents.filter(e => e.event_name === "qm_intent_selected").map(e => e.properties.intent))
+      .toContain("quick");
+  });
+});
+
 test.describe("QM — J'ai envie de…", () => {
   test("une recherche par envie affiche une seule recette pertinente", async ({ page }) => {
     await page.goto("/");
