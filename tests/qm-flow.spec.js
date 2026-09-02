@@ -125,3 +125,27 @@ test.describe("QM — retour depuis une fiche recette", () => {
     await expect(restoredCard.locator("h3")).toHaveText(title || "");
   });
 });
+
+test.describe("QM — clic sur un onglet verrouillé (visiteur)", () => {
+  test("reste sur QM sans perdre la carte, et enregistre l'abandon sans doublon", async ({ page, trackedEvents }) => {
+    await page.goto("/");
+    await page.click("#qmSurpriseBtn");
+    const card = page.locator("#qmResult .qm-card");
+    await expect(card).toBeVisible({ timeout: 15000 });
+    const title = await card.locator("h3").textContent();
+
+    // Un visiteur sans compte ne peut pas accéder à Frigo/Cuisiner/Mes plats (voir la garde
+    // !currentUser dans le handler de la tabbar, index.html) — mais avant le correctif, ce clic
+    // ré-affichait QM en dur, perdant la recherche en cours et re-déclenchant qm_screen_viewed
+    // sans jamais enregistrer d'abandon.
+    await page.click('.tab-btn[data-tab="cuisiner"]');
+
+    await expect(page.locator("#view-quoimanger")).toBeVisible();
+    await expect(card).toBeVisible();
+    await expect(card.locator("h3")).toHaveText(title || "");
+
+    const names = trackedEvents.map(e => e.event_name);
+    expect(names.filter(n => n === "qm_screen_viewed")).toHaveLength(1);
+    expect(names).toContain("qm_screen_abandoned");
+  });
+});

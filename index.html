@@ -7450,6 +7450,7 @@ function updateSecondaryBackButtons(){
   document.querySelectorAll(".secondary-back-btn").forEach(btn => { btn.textContent = label; });
 }
 function showSecondaryView(id, param){
+  qmMaybeTrackAbandon();
   document.getElementById("menuPanel").hidden = true;
   document.getElementById("notifPanel").hidden = true;
   updateSecondaryBackButtons();
@@ -7639,8 +7640,15 @@ let qmConverted = false;
 // était visible et qu'aucune recette n'a été ouverte depuis, c'est un abandon au sens du funnel P0.
 function qmMaybeTrackAbandon(){
   const qmView = document.getElementById("view-quoimanger");
-  if (qmView && !qmView.hidden && !qmConverted) {
-    trackQmEvent("qm_screen_abandoned", { intent: qmState ? qmState.intent : null, had_recipe: !!(qmState && qmState.lastCard) });
+  if (qmView && !qmView.hidden) {
+    if (!qmConverted) {
+      trackQmEvent("qm_screen_abandoned", { intent: qmState ? qmState.intent : null, had_recipe: !!(qmState && qmState.lastCard) });
+    }
+    // Invalide toute recherche encore en vol (même principe que resetQmResult()) : sans ça, une
+    // réponse réseau qui arrive après avoir quitté cet écran peut encore écrire dans #qmResult
+    // (caché mais toujours dans le DOM) et déclencher un qm_recipe_shown après coup, pour un
+    // écran déjà marqué "abandonné" — incohérent avec l'ordre réel des évènements côté analytics.
+    qmRequestId++;
   }
 }
 
@@ -7832,7 +7840,16 @@ document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click
   // Le verrou reste : un visiteur sans compte n'accède toujours pas à Frigo/Cuisiner/Mes plats. Seule sa
   // destination change (l'ancien écran "Bienvenue" n'est plus la première expérience, voir initAuth()) —
   // rien de nouveau ne devient accessible sans compte par ce changement.
-  if (!currentUser && btn.dataset.tab !== "communaute") { showWhatToEatScreen(); return; }
+  if (!currentUser && btn.dataset.tab !== "communaute") {
+    qmMaybeTrackAbandon();
+    // Le cas le plus fréquent ici (anonyme cliquant Frigo/Cuisiner/Mes plats depuis QM lui-même)
+    // n'est pas une vraie navigation : rappeler showWhatToEatScreen() sans condition redéclenchait
+    // un second qm_screen_viewed et écrasait qmState (donc la recherche en cours) sans raison,
+    // alors que l'écran ne bouge pas. Seul le cas où on vient d'ailleurs (ex. onglet Communauté)
+    // a besoin d'un vrai (re)affichage.
+    if (document.getElementById("view-quoimanger").hidden) showWhatToEatScreen();
+    return;
+  }
   switchTab(btn.dataset.tab);
 }));
 function setAuthFormExpanded(expanded){
