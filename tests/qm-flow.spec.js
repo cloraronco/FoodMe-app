@@ -1,10 +1,12 @@
 // Tests E2E du parcours "Qu'est-ce qu'on mange ?" (QM) — écran d'entrée d'Olymi.
 //
-// ATTENTION : contrairement à qm-smoke.spec.js (100% DOM/offline), ces tests déclenchent de
-// VRAIS appels réseau à l'API publique TheMealDB (via recipeProvider, voir index.html:4377).
-// Ils sont donc plus lents et peuvent échouer en cas d'indisponibilité de TheMealDB ou de
-// réseau restreint (CI sans accès sortant, par ex.) — ce n'est pas un mock, aucune fixture
-// ne doit être ajoutée ici sans le dire explicitement en commentaire si ça change un jour.
+// ATTENTION : ces tests déclenchent de VRAIS appels réseau à l'API publique TheMealDB (via
+// recipeProvider, voir index.html:4377) — plus lents que qm-smoke.spec.js, et peuvent échouer en
+// cas d'indisponibilité de TheMealDB ou de réseau restreint (CI sans accès sortant, par ex.).
+// Seule exception volontaire : l'écriture analytics (trackQmEvent -> table Supabase de PRODUCTION
+// analytics_events) est interceptée par ./fixtures pour ne jamais polluer les vraies métriques —
+// voir ce fichier pour le détail. Tout le reste (recherche de recettes, lecture communautaire)
+// continue de taper le vrai réseau sans mock.
 //
 // Couvre (voir section 18 de l'audit QM) : Surprends-moi, J'ai envie de… (résultat unique),
 // Autre chose (boucle avec exclusion), retour depuis une fiche recette (contexte préservé).
@@ -12,16 +14,23 @@
 // fichier séparé (nécessitent respectivement un compte de test et une simulation d'échec réseau,
 // hors scope de ce premier lot de tests réels).
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 
 test.describe("QM — Surprends-moi", () => {
-  test("affiche une seule recette avec un temps annoncé comme estimé", async ({ page }) => {
+  test("affiche une seule recette avec un temps annoncé comme estimé", async ({ page, trackedEvents }) => {
     await page.goto("/");
     await page.click("#qmSurpriseBtn");
 
     const card = page.locator("#qmResult .qm-card");
     await expect(card).toBeVisible({ timeout: 15000 });
     await expect(card.locator("h3")).not.toBeEmpty();
+
+    // Funnel analytics P0 : les deux premiers événements doivent partir dans l'ordre attendu
+    // (voir qmStartIntent()/qmRunCurrentSearch(), index.html) — capturé par la fixture, jamais
+    // écrit en base réelle.
+    await expect.poll(() => trackedEvents.map(e => e.event_name)).toEqual(
+      expect.arrayContaining(["qm_intent_selected", "qm_recipe_shown"])
+    );
 
     // Une seule carte : pas de deuxième .qm-card ni de liste de résultats.
     await expect(page.locator("#qmResult .qm-card")).toHaveCount(1);
