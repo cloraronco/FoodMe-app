@@ -714,6 +714,9 @@
   .qm-ingredients li:not(:last-child)::after{content:" · ";}
   .qm-card-actions{display:flex;gap:10px;margin-top:12px;align-items:center;}
   .qm-card-actions .primary-btn{flex:1;margin:0;}
+  .qm-quick-link{display:block;width:100%;margin:10px 0 0;padding:6px;background:none;border:none;
+    color:var(--ink-dim);font-family:var(--font-body);font-size:13.5px;text-decoration:underline;
+    text-underline-offset:2px;cursor:pointer;text-align:center;}
   #appSplash{
     position:fixed;inset:0;z-index:999;background:var(--bg);
     display:flex;align-items:center;justify-content:center;gap:14px;
@@ -7754,6 +7757,7 @@ function renderQmRecipeCard(item, response){
         <button type="button" class="primary-btn" id="qmCookBtn">Je cuisine</button>
         <button type="button" class="rate-taste-btn" id="qmAnotherBtn">Autre chose</button>
       </div>
+      ${qmState && qmState.intent !== "quick" ? `<button type="button" class="qm-quick-link" id="qmQuickBtn">⏱ Plus rapide ?</button>` : ""}
     </div>
   `;
   document.getElementById("qmCookBtn").addEventListener("click", () => {
@@ -7761,6 +7765,13 @@ function renderQmRecipeCard(item, response){
     qmConverted = true;
     openRecipeDetail(r.id, "quoimanger");
   });
+  const quickBtn = document.getElementById("qmQuickBtn");
+  // "quick" est un raffinement ponctuel, pas une intention persistante : il ne remplace pas
+  // qmState.intent pour les prochains "Autre chose"/retour depuis une fiche (voir qmStartIntent) —
+  // une nouvelle recherche "quick" démarre un nouveau qmState à chaque clic, comme les 3 boutons
+  // principaux. Le frigo reste transmis pour rester cohérent avec "Avec mon frigo" (aucun filtrage
+  // strict côté moteur pour l'intention "quick", voir searchRecipesByIntent()).
+  if (quickBtn) quickBtn.addEventListener("click", () => qmStartIntent("quick", { fridgeIngredients: Array.from(selected) }));
   document.getElementById("qmAnotherBtn").addEventListener("click", () => {
     trackQmEvent("qm_another_clicked", { intent: qmState ? qmState.intent : null });
     qmRunCurrentSearch();
