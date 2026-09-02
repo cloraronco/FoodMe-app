@@ -11,10 +11,10 @@
 // retour depuis une fiche recette, mode frigo, etc.) viendront dans un fichier séparé une fois
 // cette infra validée — voir aussi index.html:7595 (section "Écran d'entrée Qu'est-ce qu'on mange ?").
 
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./fixtures");
 
 test.describe("QM — smoke", () => {
-  test("l'écran \"Qu'est-ce qu'on mange ?\" s'affiche avec ses actions", async ({ page }) => {
+  test("l'écran \"Qu'est-ce qu'on mange ?\" s'affiche avec ses actions", async ({ page, trackedEvents }) => {
     await page.goto("/");
 
     // L'écran QM est le point d'entrée de l'app, affiché systématiquement au démarrage
@@ -29,5 +29,10 @@ test.describe("QM — smoke", () => {
     const surpriseBtn = page.locator("#qmSurpriseBtn");
     await expect(surpriseBtn).toBeVisible();
     await expect(surpriseBtn).toBeEnabled();
+
+    // L'instrumentation P0 doit bien se déclencher dès l'affichage de l'écran (voir
+    // showWhatToEatScreen(), index.html) — vérifié ici sur l'événement intercepté par la
+    // fixture (jamais écrit en base réelle), pas juste supposé fonctionner.
+    await expect.poll(() => trackedEvents.map(e => e.event_name)).toContain("qm_screen_viewed");
   });
 });
